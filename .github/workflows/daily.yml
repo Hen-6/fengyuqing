@@ -24,5 +24,5 @@ jobs:
       - name: Run daily poem bot
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          POEMS_JSON_PATH: data/poems.json
+          POEMS_JSON_PATH: src/data/poems.json
         run: python -m discord_bot.daily
