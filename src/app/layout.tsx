@@ -14,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hans">
       <body>
-        {/* 山水背景层 */}
+        {/* 山水背景层 - 使用 CSS background-image，可靠性更高 */}
         <div
           aria-hidden="true"
           style={{
@@ -25,23 +25,47 @@ export default function RootLayout({
             overflow: "hidden",
           }}
         >
-          {/* 远山层 - 更强对比，opacity调高 */}
-          <img
-            src="/fengyuqing/ink-bg.svg"
-            alt=""
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.35 }}
+          {/* 远山层 */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: "url(/fengyuqing/ink-bg.svg)",
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              opacity: 0.4,
+            }}
           />
           {/* 竹韵边饰 - 右侧 */}
-          <img
-            src="/fengyuqing/bamboo.svg"
-            alt=""
-            style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "140px", objectFit: "cover", opacity: 0.45 }}
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              width: "140px",
+              height: "100%",
+              backgroundImage: "url(/fengyuqing/bamboo.svg)",
+              backgroundRepeat: "repeat-y",
+              backgroundSize: "120px auto",
+              backgroundPosition: "right top",
+              opacity: 0.5,
+            }}
           />
           {/* 水波底纹 */}
-          <img
-            src="/fengyuqing/cloud-wave.svg"
-            alt=""
-            style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "200px", objectFit: "cover", opacity: 0.3 }}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: "100%",
+              height: "200px",
+              backgroundImage: "url(/fengyuqing/cloud-wave.svg)",
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "cover",
+              backgroundPosition: "bottom",
+              opacity: 0.35,
+            }}
           />
         </div>
         {/* 主内容层 */}
