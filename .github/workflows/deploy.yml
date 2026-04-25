@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Copy poems.json to public
-        run: mkdir -p public/data && cp src/data/poems.json public/data/poems.json
+        run: mkdir -p public/data && cp data/poems.json public/data/poems.json
 
       - name: Build
         run: npm run build
