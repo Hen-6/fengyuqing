@@ -27,19 +27,19 @@ export default function RootLayout({
         >
           {/* 远山 + 云雾 */}
           <img
-            src="/ink-bg.svg"
+            src="/fengyuqing/ink-bg.svg"
             alt=""
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.08 }}
           />
           {/* 竹韵边饰 */}
           <img
-            src="/bamboo.svg"
+            src="/fengyuqing/bamboo.svg"
             alt=""
             style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "120px", objectFit: "cover", opacity: 0.1 }}
           />
           {/* 水波底纹 */}
           <img
-            src="/cloud-wave.svg"
+            src="/fengyuqing/cloud-wave.svg"
             alt=""
             style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "160px", objectFit: "cover", opacity: 0.08 }}
           />
