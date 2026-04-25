@@ -44,10 +44,10 @@ body {
   color: var(--text);
   font-family: "Noto Serif SC", "Source Han Serif CN", "SimSun", Georgia, serif;
   -webkit-font-smoothing: antialiased;
-  /* 背景：水墨山水 SVG — 100% 比例缩放，不裁剪 */
-  background-image: url("/fengyuqing/ink-bg.svg");
+  /* 背景：传统山水画摄影 */
+  background-image: url("/fengyuqing/ink-bg.jpg");
   background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background-size: cover;
   background-position: center center;
   background-attachment: fixed;
   background-color: #f2ece0;
