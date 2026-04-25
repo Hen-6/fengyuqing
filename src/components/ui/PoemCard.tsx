@@ -10,6 +10,8 @@ interface PoemCardProps {
 
 export function PoemCard({ poem, onClose, className = "" }: PoemCardProps) {
   const isFive = poem.cleanLines[0]?.length === 5;
+  // 显示时使用带标点的原始诗句，竖排时换算 cleanLines 的字数
+  const displayLines = poem.lines ?? poem.cleanLines;
   const vertClass = isFive ? "vert-5" : "vert-7";
 
   return (
@@ -40,7 +42,7 @@ export function PoemCard({ poem, onClose, className = "" }: PoemCardProps) {
 
       {/* 诗句竖排 */}
       <div className={`flex gap-4 ${vertClass} py-2`}>
-        {poem.cleanLines.map((line, i) => (
+        {displayLines.map((line, i) => (
           <span key={i} className="text-ink leading-loose">
             {line}
           </span>

@@ -24,6 +24,7 @@ export function FeihuaGame() {
   const [verifiedPoem, setVerifiedPoem] = useState<Poem | null>(null);
   const [showCard, setShowCard] = useState(false);
   const [showBotCard, setShowBotCard] = useState(false);
+  const [showBotModal, setShowBotModal] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState(3);
 
   const store = loadStore();
@@ -185,7 +186,7 @@ export function FeihuaGame() {
           {/* 系统出句（整联对句） */}
           <div
             className="group relative rounded-xl border border-border bg-surface p-4 cursor-pointer hover:border-accent transition-colors"
-            onClick={() => setShowBotCard(true)}
+            onClick={() => setShowBotModal(true)}
             title="点击查看完整诗词"
           >
             <p className="text-xs text-text-muted mb-2">请接出含「{selectedChar}」的诗句</p>
@@ -273,6 +274,40 @@ export function FeihuaGame() {
                           <span className="level-name">{["陌生", "认字", "识句", "成篇", "全知"][lvl - 1]}</span>
                         </button>
                       ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 系统诗词大弹窗（点击出句触发） */}
+              {showBotModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <PoemCard
+                    poem={botCouplet.poem}
+                    onClose={() => setShowBotModal(false)}
+                  />
+                  {/* 熟练度自测叠加在诗词卡下方 */}
+                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
+                    <div className="rounded-xl border border-border bg-surface p-4 shadow-xl">
+                      <p className="mb-3 text-center text-sm text-text-muted">
+                        你对这首诗的熟悉程度？
+                      </p>
+                      <div className="flex justify-center gap-1.5">
+                        {[1, 2, 3, 4, 5].map((lvl) => (
+                          <button
+                            key={lvl}
+                            onClick={() => {
+                              const { setLevel } = require("@/lib/user");
+                              setLevel(store, botCouplet!.poem.id, lvl);
+                              setShowBotModal(false);
+                            }}
+                            className="level-btn"
+                          >
+                            <span className="level-num">{lvl}</span>
+                            <span className="level-name">{["陌生", "认字", "识句", "成篇", "全知"][lvl - 1]}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

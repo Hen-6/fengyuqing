@@ -146,8 +146,8 @@ export function XunhuaGame() {
     if (!guess.trim() || phase !== "playing") return;
     const trimmed = guess.replace(/[，。？！、；：""''【】『』「」()（）.?!,\s]/g, "");
 
-    if (trimmed.length !== answer.length) {
-      alert(`答案长度为 ${answer.length} 字，请重新输入`);
+    if (trimmed.length === 0) {
+      alert("请输入诗句");
       return;
     }
 
@@ -375,7 +375,7 @@ export function XunhuaGame() {
             value={guess}
             onChange={(e) => setGuess(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleGuessSubmit()}
-            placeholder={answer ? `输入 ${answer.length} 字诗句` : "输入诗句"}
+            placeholder="输入诗句"
             className="input-chinese flex-1 text-center"
           />
           <VoiceInput onResult={handleVoiceResult} />

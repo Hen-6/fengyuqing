@@ -3,35 +3,59 @@
 rank_poems.py — 生成按知名度排序的 poems.json
 
 数据来源（优先级从高到低）：
-  1. 唐诗三百首（蘅塘退士编）— 从 yxcs poems1.json 过滤
+  1. 唐诗三百首（蘅塘退士编）— 从 yxcs poems1.json NDJSON 流式读取
   2. 教育部义务教育必背古诗词 — 补充
-  3. XunHuaLing 73首精选 — 兜底
 
-poems1.json 是 ndjson 格式，每行一个 JSON 对象，约 40MB。
-通过流式下载+逐行处理，避免内存溢出。
+poems1.json NDJSON URL: https://raw.githubusercontent.com/yxcs/poems-db/master/poems1.json
+每行一个 JSON 对象，用 name/content 字段。
 """
 
 import json
 import re
 import hashlib
-import os
-import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
 DATA_DIR = PROJECT_DIR / "data"
-XUNHUA_SOURCE = DATA_DIR / "xunhualing_source.json"
 OUTPUT_FILE = DATA_DIR / "poems.json"
 POEMS1_URL = "https://raw.githubusercontent.com/yxcs/poems-db/master/poems1.json"
 
 # ─── 工具函数 ───────────────────────────────────────────────────────────────
 
 def normalize(s: str) -> str:
-    return re.sub(r"[\s，。！？、；：""''【】『』「」()（）.?!,]", "", s).lower()
+    """去除标点、空格并小写，用于标题匹配"""
+    return re.sub(r"[\s，。！？、；：""''【】『』「」()（）.?!,·《》]", "", s).strip().lower()
+
+def clean_html(text: str) -> str:
+    """去除 HTML 标签"""
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.strip()
+
+def split_lines(raw_line: str) -> list[str]:
+    """
+    将一行原始文本拆分为多句。
+    先按中文逗号、顿号拆分对句，再按句末标点拆分段落。
+    例: '床前明月光，疑是地上霜。' → ['床前明月光', '疑是地上霜']
+    """
+    # 第一步：按逗号/顿号拆分对句（不含句末标点的子句）
+    comma_parts = re.split(r"[，、]", raw_line)
+    result: list[str] = []
+    for part in comma_parts:
+        part = part.strip()
+        if not part:
+            continue
+        # 第二步：每个子句再按句末标点拆分
+        sub_parts = re.split(r"[。！？；]", part)
+        for sp in sub_parts:
+            sp = sp.strip()
+            if sp and len(sp) >= 2:
+                result.append(sp)
+    return result
 
 def punct_strip(text: str) -> str:
-    return re.sub(r"[，。？！、；：""''【】『』「」()（）.?!,\s]", "", text)
+    """去除所有标点符号（含逗号、顿号、书名号、引号等）"""
+    return re.sub(r"[，。！？、；：""''【】『』「」()（）.?!,\s「」『』—–\-《》〈〉『〗【】『】″′″″″]", "", text)
 
 def make_id(title: str, author: str) -> str:
     key = f"{title}:{author}"
@@ -39,12 +63,12 @@ def make_id(title: str, author: str) -> str:
 
 # ─── 加载种子列表 ────────────────────────────────────────────────────────────
 
-def load_seed_titles() -> tuple[set[str], list[tuple[str, str]]]:
+def load_seed_titles() -> tuple[set[str], list[str]]:
     """
     加载所有种子标题。
-    返回 (normalized_set, [(normalized, original)] 按优先级排序)
+    返回 (normalized_set, [normalized_titles]) 按优先级排序
     """
-    seen = {}
+    seen_norm: dict[str, str] = {}  # norm → original
     priority_order = [
         DATA_DIR / "seed_lists" / "tang300.json",
         DATA_DIR / "seed_lists" / "edu_required.json",
@@ -59,6 +83,7 @@ def load_seed_titles() -> tuple[set[str], list[tuple[str, str]]]:
             items = json.loads(raw)
         except json.JSONDecodeError:
             items = [l.strip() for l in raw.splitlines() if l.strip()]
+
         for item in items:
             title = ""
             if isinstance(item, str):
@@ -67,43 +92,136 @@ def load_seed_titles() -> tuple[set[str], list[tuple[str, str]]]:
                 title = (item.get("title") or item.get("name", "")).strip()
             if title:
                 norm = normalize(title)
-                if norm not in seen:
-                    seen[norm] = title
-    return set(seen.keys()), [(norm, orig) for norm, orig in seen.items()]
+                if norm and norm not in seen_norm:
+                    seen_norm[norm] = title
 
-# ─── 匹配函数 ────────────────────────────────────────────────────────────────
+    # 按优先级排序（唐诗三百首在前）
+    norms = list(seen_norm.keys())
+    return set(norms), norms
+
+# ─── 标题匹配 ────────────────────────────────────────────────────────────────
 
 def match_title(seed_norm: str, title: str) -> bool:
+    """宽松匹配：包含关系 或 前两字相同"""
     title_norm = normalize(title)
     if not seed_norm or not title_norm:
         return False
-    return (seed_norm in title_norm or title_norm in seed_norm or
-            (len(seed_norm) >= 2 and seed_norm[:2] == title_norm[:2]))
+    if seed_norm in title_norm or title_norm in seed_norm:
+        return True
+    # 前两字匹配
+    if len(seed_norm) >= 2 and len(title_norm) >= 2 and seed_norm[:2] == title_norm[:2]:
+        return True
+    return False
+
+# ─── 类型推断 ───────────────────────────────────────────────────────────────
+
+KNOWN_CI_TYPES = {
+    "沁园春", "水调歌头", "满江红", "念奴娇", "水龙吟", "永遇乐", "望海潮",
+    "贺新郎", "摸鱼儿", "贺新郎", "扬州慢", "暗香", "疏影", "疏影", "双双燕",
+    "霓裳中序第一", "摸鱼子", "采桑子", "卜算子", "渔家傲", "清平乐", "菩萨蛮",
+    "西江月", "如梦令", "蝶恋花", "鹊桥仙", "临江仙", "虞美人", "木兰花",
+    "踏莎行", "雨霖铃", "声声慢", "一剪梅", "鹧鸪天", "南乡子", "定风波",
+    "少年游", "六丑", "兰陵王", "六州歌头", "戚氏", "八声甘州", "夜半乐",
+    "眉妩", "庆春宫", "绮罗香", "疏帘淡月", "采旧令", "换巢鸾凤", "东风第一枝",
+    "庆清朝", "长亭怨慢", "暗香", "疏影", "绿头鸭", "西平乐", "归朝欢",
+    "永遇乐", "望海潮", "长相思", "点绛唇", "生查子", "诉衷情", "谒金门",
+    "好事近", "谒金门", "天仙子", "更漏子", "酒泉子", "采莲令", "河满子",
+    "清平调", "清平乐", "女冠子", "更漏子", "归国谣", "菩萨蛮", "玉蝴蝶",
+    "八六子", "扑蝴蝶", "秋霁", "夜合花", "大有", "水调歌", "探春令",
+    "传言玉女", "花心动", "垂丝钓", "金人捧露盘", "金盏子", "龙山会",
+    "蓦山溪", "千秋岁", "归田乐", "清平乐令", "应天长", "渔父", "张中令",
+    "西溪子", "更漏子", "酒泉子", "上行杯", "离别的依",
+}
+
+CI_CHARS = {"沁","水","满","念","龙","永","望","贺","摸","扬","暗","疏","双","采","卜","渔","清","菩","西","如","蝶","鹊","临","虞","木","踏","雨","声","一","鹧","南","定","少","六","兰","夜","归","长","点","生","诉","好","天","垂","应","张","女","上","离","大","探","言","花","垂","千","归","应","渔"}
+
+def infer_type(name: str, clean_lines: list[str]) -> str:
+    """
+    推断诗歌类型：五言绝句 / 五言律诗 / 七言绝句 / 七言律诗 / 词 / 其他
+    基于 clean_lines（去标点后的独立句）
+    """
+    if not clean_lines:
+        return "其他"
+
+    # 检查是否含词牌关键字
+    ci_cands = ["沁园春","水调歌头","满江红","念奴娇","水龙吟","永遇乐","望海潮",
+                "贺新郎","摸鱼儿","扬州慢","采桑子","卜算子","渔家傲","清平乐",
+                "菩萨蛮","西江月","如梦令","蝶恋花","鹊桥仙","临江仙","虞美人",
+                "木兰花","踏莎行","雨霖铃","声声慢","一剪梅","鹧鸪天","南乡子",
+                "定风波","少年游","六州歌头","长相思","点绛唇","生查子","诉衷情",
+                "好事近","天仙子","蓦山溪","千秋岁","天净沙","青玉案","千秋岁引",
+                "汉宫春","满庭芳","苏幕遮","御街行","夜游宫","祝英台近",
+                "惜红衣","暗香","疏影","瑶华","忆旧游","曲游春","三姝媚",
+                "南浦","双双燕","月下笛","瑞鹤仙","声声慢","高阳台","锁窗寒",
+                "疏帘淡月","六丑","兰陵王","八声甘州","夜半乐","水调","征管"]
+
+    name_lower = name.lower()
+    # 过滤散曲/元曲
+    forbidden = ["散曲", "仙吕", "中吕", "正宫", "双调", "南吕", "越调", "大石调",
+                 "般涉调", "商调", "黄钟宫", "商角调", "高平调", "平调",
+                 "梧桐雨", "寄生草调", "山坡羊", "清江引", "塞鸿秋",
+                 "小令", "套数", "杂剧", "曲牌"]
+    for kw in forbidden:
+        if kw in name:
+            return "拒绝"
+
+    for kw in ci_cands:
+        if kw in name or kw in name_lower:
+            return "词"
+        if clean_lines and kw in clean_lines[0]:
+            return "词"
+
+    # 判断五言/七言
+    # 使用 clean_lines 中的独立句（不是合并的对句）
+    line_lens = [len(ln) for ln in clean_lines]
+    first_len = line_lens[0] if line_lens else 0
+
+    if first_len == 5:
+        if len(clean_lines) == 1:
+            return "五言古诗"
+        if len(clean_lines) == 4:
+            return "五言绝句"
+        if len(clean_lines) >= 6:
+            return "五言律诗"
+        return "五言古诗"
+    elif first_len == 7:
+        if len(clean_lines) == 1:
+            return "七言古诗"
+        if len(clean_lines) == 4:
+            return "七言绝句"
+        if len(clean_lines) >= 6:
+            return "七言律诗"
+        return "七言古诗"
+    elif first_len == 6:
+        return "六言诗"
+    else:
+        return "其他"
 
 # ─── 处理 yxcs poems1.json ─────────────────────────────────────────────────
 
-def stream_poems1(seed_set: set[str]) -> list[dict]:
+def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
     """
-    流式下载并处理 poems1.json，只保留匹配种子的诗歌。
-    poems1.json 是 ndjson 格式（每行一个 JSON 对象）。
+    流式下载并处理 poems1.json NDJSON，只保留匹配种子的诗歌。
     """
     import urllib.request
+    # Build a norm→position lookup for O(1) access
+    seed_rank: dict[str, int] = {norm: i for i, norm in enumerate(seed_list)}
 
-    print("下载 poems1.json（流式处理）...")
-    poems = []
-    matched_norm = set()
+    print(f"下载 {POEMS1_URL}（流式处理）...")
+    poems: list[dict] = []
+    matched: dict[str, dict] = {}  # norm → poem (保留优先级高的)
     total = 0
 
     try:
-        with urllib.request.urlopen(POEMS1_URL, timeout=120) as resp:
-            buffer = []
+        req = urllib.request.Request(POEMS1_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=180) as resp:
             for line in resp:
                 total += 1
-                line = line.decode("utf-8").strip()
-                if not line or line in ("[", "]", ","):
+                line_str = line.decode("utf-8").strip()
+                if not line_str or line_str in ("[", "]", ","):
                     continue
                 try:
-                    obj = json.loads(line)
+                    obj = json.loads(line_str)
                 except json.JSONDecodeError:
                     continue
 
@@ -121,107 +239,91 @@ def stream_poems1(seed_set: set[str]) -> list[dict]:
                     if match_title(seed, name):
                         is_match = True
                         break
-
                 if not is_match:
                     continue
 
-                if name_norm in matched_norm:
+                # 获取原始诗句（在同名词检查之后，清理之前）
+                raw_content: list = obj.get("content", [])
+
+                # 同名去重（保留第一个/优先级高的）
+                if name_norm in matched:
                     continue
-                matched_norm.add(name_norm)
 
-                poems.append(obj)
+                # 先清理 HTML，再拆分句子（顺序很重要！）
+                # split_lines() already splits on 句末标点, returns clean parts
+                all_lines: list[str] = []
+                for item in raw_content:
+                    cleaned = clean_html(str(item))
+                    if not cleaned:
+                        continue
+                    parts = split_lines(cleaned)  # already strips whitespace
+                    for part in parts:
+                        if part:
+                            all_lines.append(part)
 
-                if len(poems) % 20 == 0:
+                if not all_lines:
+                    continue
+
+                # 去相邻重复
+                seen_lines = set()
+                lines = []
+                for ln in all_lines:
+                    if ln not in seen_lines:
+                        seen_lines.add(ln)
+                        lines.append(ln)
+
+                clean_lines = [punct_strip(ln) for ln in lines]
+                # 过滤掉 cleanLines 中全是非汉字的
+                valid = [(ln, cl) for ln, cl in zip(lines, clean_lines)
+                         if len(cl) >= 4 and re.search(r"[\u4e00-\u9fff]", cl)]
+                if not valid:
+                    continue
+                lines, clean_lines = zip(*valid)
+                lines = list(lines)
+                clean_lines = list(clean_lines)
+
+                # 推断类型（用于过滤散曲）— 基于 clean_lines
+                ptype = infer_type(name, clean_lines)
+                if ptype == "拒绝":
+                    continue
+
+                chars_set = set()
+                for line in clean_lines:
+                    for c in line:
+                        if c.strip():
+                            chars_set.add(c)
+
+                pid = obj.get("_id", {})
+                if isinstance(pid, dict):
+                    pid = pid.get("$oid", "")
+                if not pid or len(str(pid)) < 6:
+                    pid = make_id(name, obj.get("author", ""))
+
+                poem = {
+                    "id": str(pid),
+                    "title": name,
+                    "author": obj.get("author", ""),
+                    "dynasty": obj.get("dynasty", ""),
+                    "type": ptype,
+                    "lines": lines,
+                    "cleanLines": clean_lines,
+                    "note": obj.get("note", ""),
+                    "allChars": sorted(list(chars_set)),
+                    "_rank": seed_rank.get(name_norm, 9999),
+                }
+                matched[name_norm] = poem
+
+                if len(poems) % 50 == 0:
                     print(f"    已匹配 {len(poems)} 首（扫描 {total} 行）...")
 
     except Exception as e:
         print(f"  ⚠ 下载 poems1.json 失败: {e}")
-        print("  继续使用 XunHuaLing 数据...")
-
-    print(f"  poems1.json 扫描完成：匹配 {len(poems)} 首（扫描 {total} 行）")
-    return poems
-
-# ─── 转换 yxcs 格式 ────────────────────────────────────────────────────────
-
-def convert_yxcs(poems: list[dict]) -> list[dict]:
-    """将 yxcs 格式转换为标准格式"""
-    result = []
-    for poem in poems:
-        content = poem.get("content", [])
-        if not content or not isinstance(content, list) or len(content) < 2:
-            continue
-
-        clean_lines = [punct_strip(c) for c in content]
-        if len(clean_lines[0]) < 4:
-            continue
-
-        chars_set = set()
-        for line in clean_lines:
-            for c in line:
-                if c.strip():
-                    chars_set.add(c)
-
-        first_len = len(clean_lines[0])
-        if first_len == 5:
-            ptype = poem.get("type", "") or "五言"
-        elif first_len == 7:
-            ptype = poem.get("type", "") or "七言"
-        else:
-            ptype = poem.get("type", "未知")
-
-        pid = poem.get("_id", {}).get("$oid", "") or poem.get("_id", "")
-        if not pid or len(pid) < 6:
-            pid = make_id(poem.get("name", ""), poem.get("author", ""))
-
-        result.append({
-            "id": pid,
-            "title": poem.get("name", ""),
-            "author": poem.get("author", ""),
-            "dynasty": poem.get("dynasty", ""),
-            "type": ptype,
-            "lines": content,
-            "cleanLines": clean_lines,
-            "note": poem.get("note", ""),
-            "allChars": sorted(list(chars_set)),
-            "_yxcs": True,
-        })
-    return result
-
-# ─── 加载 XunHuaLing 73首 ─────────────────────────────────────────────────
-
-def load_xunhua() -> list[dict]:
-    """加载 XunHuaLing 73首（兜底）"""
-    if not XUNHUA_SOURCE.exists():
-        print(f"  ⚠ XunHuaLing source not found: {XUNHUA_SOURCE}")
         return []
-    with open(XUNHUA_SOURCE, encoding="utf-8") as f:
-        poems = json.load(f)
-    result = []
-    for p in poems:
-        lines = p.get("lines", [])
-        clean_lines = [punct_strip(l) for l in lines]
-        chars_set = list(dict.fromkeys(c for l in clean_lines for c in l if c.strip()))
-        ptype = p.get("type", "")
-        if not ptype:
-            if clean_lines and len(clean_lines[0]) == 5:
-                ptype = "五言"
-            elif clean_lines and len(clean_lines[0]) == 7:
-                ptype = "七言"
-            else:
-                ptype = "未知"
-        result.append({
-            "id": p.get("id") or make_id(p.get("title", ""), p.get("author", "")),
-            "title": p.get("title", ""),
-            "author": p.get("author", ""),
-            "dynasty": p.get("dynasty", ""),
-            "type": ptype,
-            "lines": lines,
-            "cleanLines": clean_lines,
-            "note": "",
-            "allChars": chars_set,
-            "_xunhua": True,
-        })
-    return result
+
+    print(f"  poems1.json 扫描完成：匹配 {len(matched)} 首（扫描 {total} 行）")
+    # 按种子优先级排序
+    sorted_poems = sorted(matched.values(), key=lambda p: p["_rank"])
+    return sorted_poems
 
 # ─── 主逻辑 ────────────────────────────────────────────────────────────────
 
@@ -234,64 +336,33 @@ def main():
     seed_set, seed_list = load_seed_titles()
     print(f"\n✅ 种子标题：{len(seed_set)} 个（唐诗三百首 + 教育部必背）")
 
-    # 2. 从 poems1.json 提取匹配项
-    yxcs_poems = stream_poems1(seed_set)
-    yxcs_converted = convert_yxcs(yxcs_poems)
-    yxcs_titles_norm = {normalize(p["title"]) for p in yxcs_converted}
-    print(f"\n✅ 从 yxcs 匹配：{len(yxcs_converted)} 首")
+    # 2. 流式读取 yxcs poems1.json
+    poems = stream_poems1(seed_set, seed_list)
+    print(f"\n✅ 匹配诗歌：{len(poems)} 首")
 
-    # 3. 加载 XunHuaLing（兜底未匹配项）
-    xunhua_poems = load_xunhua()
-    xunhua_titles_norm = {normalize(p["title"]) for p in xunhua_poems}
-    print(f"✅ XunHuaLing：{len(xunhua_poems)} 首")
-
-    # 4. 合并去重
-    all_poems_dict: dict[str, dict] = {}
-    seen_ids: set[str] = set()
-
-    # 先加 yxcs（优先级高）
-    for p in yxcs_converted:
-        pid = p["id"]
-        if pid not in seen_ids:
-            all_poems_dict[normalize(p["title"]) + "_" + pid[:4]] = p
-            seen_ids.add(pid)
-
-    # 再加 XunHuaLing（兜底，只加不在 yxcs 中的）
-    for p in xunhua_poems:
-        pid = p["id"]
-        title_norm = normalize(p["title"])
-        key = title_norm + "_" + pid[:4]
-        if key not in all_poems_dict:
-            all_poems_dict[key] = p
-            seen_ids.add(pid)
-
-    all_poems = list(all_poems_dict.values())
-
-    # 5. 按优先级排序
-    # 已在 yxcs 中（_yxcs=True）的排前面
-    yxcs_sorted = sorted([p for p in all_poems if p.get("_yxcs")], key=lambda p: p["title"])
-    xunhua_sorted = sorted([p for p in all_poems if p.get("_xunhua") and not p.get("_yxcs")], key=lambda p: p["title"])
-    all_poems = yxcs_sorted + xunhua_sorted
-
-    # 6. 更新 rank
-    for i, p in enumerate(all_poems, 1):
+    # 3. 更新 rank，清理内部字段
+    for i, p in enumerate(poems, 1):
         p["rank"] = i
-        # 清理内部字段
-        for key in ["_yxcs", "_xunhua"]:
-            p.pop(key, None)
+        p.pop("_rank", None)
 
-    # 7. 写输出
+    # 4. 写输出
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(all_poems, f, ensure_ascii=False, indent=2)
+        json.dump(poems, f, ensure_ascii=False, indent=2)
 
     print(f"\n{'=' * 60}")
-    print(f"✅ 写入 {len(all_poems)} 首诗 → {OUTPUT_FILE}")
-    print(f"   yxcs 匹配：{len(yxcs_sorted)} 首")
-    print(f"   XunHuaLing 兜底：{len(xunhua_sorted)} 首")
+    print(f"✅ 写入 {len(poems)} 首诗 → {OUTPUT_FILE}")
+
+    # 5. 统计类型分布
+    from collections import Counter
+    type_dist = Counter(p.get("type", "") for p in poems)
+    print(f"\n类型分布：")
+    for t, cnt in type_dist.most_common():
+        print(f"  {t}: {cnt}")
+
     print(f"\n前20首：")
-    for p in all_poems[:20]:
-        print(f"  {p['rank']:3d}. {p['title']} — {p['author']}（{p['dynasty']}）")
+    for p in poems[:20]:
+        print(f"  {p['rank']:3d}. 《{p['title']}》— {p['author']}（{p['dynasty']}）{p['type']}")
 
 if __name__ == "__main__":
     main()

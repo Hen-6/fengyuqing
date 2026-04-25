@@ -55,6 +55,87 @@ body {
     radial-gradient(ellipse at 80% 70%, rgba(180, 130, 60, 0.05) 0%, transparent 50%);
 }
 
+/* 国风印章装饰（角落） */
+.corner-seal {
+  position: relative;
+}
+.corner-seal::before {
+  content: "诗";
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 4px;
+  transform: rotate(12deg);
+  opacity: 0.7;
+  font-family: "Noto Serif SC", serif;
+  line-height: 1;
+}
+
+/* 水墨晕染装饰线 */
+.ink-divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(192, 57, 43, 0.3) 20%,
+    rgba(192, 57, 43, 0.5) 50%,
+    rgba(192, 57, 43, 0.3) 80%,
+    transparent 100%
+  );
+}
+
+/* 国风横线装饰 */
+.guofeng-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.guofeng-divider::before,
+.guofeng-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border));
+}
+.guofeng-divider::after {
+  background: linear-gradient(to left, transparent, var(--border));
+}
+
+/* 国风卡片悬停 */
+.guofeng-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  box-shadow: 0 1px 4px rgba(44, 36, 22, 0.06);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+.guofeng-card:hover {
+  box-shadow: 0 4px 16px rgba(44, 36, 22, 0.12);
+  transform: translateY(-1px);
+}
+
+/* 毛笔字效果 */
+.brush-title {
+  font-family: "Noto Serif SC", "SimSun", Georgia, serif;
+  letter-spacing: 0.1em;
+  text-shadow: 1px 1px 2px rgba(44, 36, 22, 0.15);
+}
+
+/* 竖排诗句中的标点处理 */
+.vert-5 span, .vert-7 span {
+  font-variant-east-asian: upright;
+}
+
 /* 国风卡片 */
 .guofeng-card {
   border-radius: 1rem;
