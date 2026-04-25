@@ -171,8 +171,7 @@ export function JielongGame({ poems }: JielongGameProps) {
               onChange={(e) => setUserInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
               placeholder="输入诗句"
-              className="flex-1 rounded-xl border border-border bg-surface px-4 py-3 text-lg text-ink
-                         placeholder:text-text-muted focus:border-accent focus:outline-none"
+              className="input-chinese flex-1 text-center"
               autoFocus
             />
             <VoiceInput onResult={submitVoice} />
@@ -189,13 +188,13 @@ export function JielongGame({ poems }: JielongGameProps) {
               <>
                 <button
                   onClick={confirmLevel}
-                  className="flex-1 rounded-xl bg-accent py-3 text-white font-semibold hover:bg-red-700 transition"
+                  className="btn-primary flex-1"
                 >
                   记录并继续
                 </button>
                 <button
                   onClick={reset}
-                  className="rounded-xl border border-border px-4 py-3 text-text-muted hover:border-accent transition"
+                  className="btn-secondary"
                 >
                   结束
                 </button>
@@ -204,13 +203,13 @@ export function JielongGame({ poems }: JielongGameProps) {
               <>
                 <button
                   onClick={submit}
-                  className="flex-1 rounded-xl bg-accent py-3 text-white font-semibold hover:bg-red-700 transition"
+                  className="btn-primary flex-1"
                 >
                   提交
                 </button>
                 <button
                   onClick={reset}
-                  className="rounded-xl border border-border px-4 py-3 text-text-muted hover:border-accent transition"
+                  className="btn-secondary"
                 >
                   结束
                 </button>

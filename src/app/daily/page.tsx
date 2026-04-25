@@ -20,7 +20,7 @@ export default function DailyPage() {
   if (!poem) return null;
 
   return (
-    <div className="min-h-screen bg-bg px-6 py-8">
+    <div className="min-h-screen paper-texture px-6 py-8">
       <div className="mx-auto max-w-md space-y-6">
         <header className="flex items-center gap-4">
           <Link href="/" className="text-2xl text-text-muted hover:text-accent transition">←</Link>

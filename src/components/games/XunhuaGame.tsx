@@ -10,8 +10,8 @@ import {
 } from "@/lib/poems";
 import { loadStore, recordResult } from "@/lib/user";
 import { PoemCard } from "@/components/ui/PoemCard";
+import { VoiceInput } from "@/components/ui/VoiceInput";
 
-const MAX_GUESSES = 15;
 const MAX_SCORE = 200;
 
 type CharState = "empty" | "correct" | "present" | "absent";
@@ -79,14 +79,14 @@ function calcScore(guessCount: number): number {
 }
 
 export function XunhuaGame() {
-  const [phase, setPhase] = useState<"playing" | "won" | "lost">("playing");
+  const [phase, setPhase] = useState<"playing" | "won">("playing");
   const [target, setTarget] = useState<CoupletEntry | null>(null);
   const [answer, setAnswer] = useState<string>("");
   const [hintPool, setHintPool] = useState<string[]>([]);
   const [hintStates, setHintStates] = useState<CharState[]>([]);
   const [guess, setGuess] = useState<string>("");
   const [guesses, setGuesses] = useState<Guess[]>([]);
-  const [guessesLeft, setGuessesLeft] = useState(MAX_GUESSES);
+  const [guessesLeft, setGuessesLeft] = useState(Infinity);
   const [score, setScore] = useState(MAX_SCORE);
   const [showCard, setShowCard] = useState(false);
   const [cardPoem, setCardPoem] = useState<Poem | null>(null);
@@ -114,7 +114,7 @@ export function XunhuaGame() {
     setHintStates(Array(100).fill("empty"));
     setGuess("");
     setGuesses([]);
-    setGuessesLeft(MAX_GUESSES);
+    setGuessesLeft(Infinity);
     setScore(MAX_SCORE);
     setPhase("playing");
     setShowCard(false);
@@ -144,7 +144,7 @@ export function XunhuaGame() {
 
   const handleGuessSubmit = useCallback(() => {
     if (!guess.trim() || phase !== "playing") return;
-    const trimmed = guess.replace(/\s/g, "");
+    const trimmed = guess.replace(/[，。？！、；：""''【】『』「」()（）.?!,\s]/g, "");
 
     if (trimmed.length !== answer.length) {
       alert(`答案长度为 ${answer.length} 字，请重新输入`);
@@ -174,8 +174,7 @@ export function XunhuaGame() {
         }
       }
       setHintStates(newHintStates);
-      setGuessesLeft((l) => l - 1);
-      const finalScore = calcScore(MAX_GUESSES - guessesLeft + 1);
+      const finalScore = calcScore(guesses.length + 1);
       setScore(finalScore);
       setPhase("won");
       if (poem) recordResult(store, poem.id, "correct");
@@ -229,7 +228,7 @@ export function XunhuaGame() {
 
     // 都不符合 → 正常记录
     recordWrongGuess(trimmed);
-  }, [guess, answer, phase, target, store, guessesLeft, hintStates, hintPool]);
+  }, [guess, answer, phase, target, store, guesses, hintStates, hintPool]);
 
   function verifyGuess(line: string): { found: boolean; poem: Poem | null; lineIndex: number } {
     // 在库中查找精确匹配
@@ -266,14 +265,12 @@ export function XunhuaGame() {
       }
     }
     setHintStates(newHintStates);
-    const remaining = guessesLeft - 1;
-    setGuessesLeft(remaining);
-    if (remaining === 0) {
-      setPhase("lost");
-      if (poem) recordResult(store, poem.id, "wrong");
-    }
     setGuess("");
   }
+
+  const handleVoiceResult = useCallback((text: string) => {
+    setGuess(text);
+  }, []);
 
   const confirmOffByOne = useCallback(() => {
     if (!showConfirm) return;
@@ -297,14 +294,13 @@ export function XunhuaGame() {
       }
     }
     setHintStates(newHintStates);
-    setGuessesLeft((l) => l - 1);
-    const finalScore = calcScore(MAX_GUESSES - guessesLeft);
+    const finalScore = calcScore(guesses.length + 1);
     setScore(finalScore);
     setPhase("won");
     if (poem) recordResult(store, poem.id, "correct");
     setGuess("");
     setShowConfirm(null);
-  }, [showConfirm, hintStates, hintPool, guessesLeft, store]);
+  }, [showConfirm, hintStates, hintPool, guesses, store]);
 
   const hintBgClass = (state: CharState) => {
     switch (state) {
@@ -377,25 +373,23 @@ export function XunhuaGame() {
           <input
             type="text"
             value={guess}
-            onChange={(e) => setGuess(e.target.value.replace(/\s/g, ""))}
+            onChange={(e) => setGuess(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleGuessSubmit()}
             placeholder={answer ? `输入 ${answer.length} 字诗句` : "输入诗句"}
-            maxLength={answer.length}
-            className="flex-1 rounded-xl border border-border bg-surface px-4 py-3 text-lg text-ink
-                       placeholder:text-text-muted focus:border-accent focus:outline-none text-center tracking-widest"
+            className="input-chinese flex-1 text-center"
           />
+          <VoiceInput onResult={handleVoiceResult} />
           <button
             onClick={handleGuessSubmit}
-            className="rounded-xl bg-accent px-6 py-3 font-semibold text-white hover:bg-red-700 transition"
+            className="btn-primary"
           >
             猜
           </button>
         </div>
       )}
 
-      {/* 剩余次数 + 得分 */}
-      <div className="mb-4 flex justify-between text-sm text-text-muted">
-        <span>剩余 {guessesLeft} 次</span>
+      {/* 得分 */}
+      <div className="mb-4 flex justify-end text-sm text-text-muted">
         <span>得分 {score}</span>
       </div>
 
@@ -433,16 +427,9 @@ export function XunhuaGame() {
         <div className="mb-4 space-y-4">
           <div className="rounded-2xl border-2 border-accent bg-surface p-6 text-center">
             <p className="text-2xl font-bold text-ink">
-              {phase === "won" ? `🎉 正确！得分 ${score}` : "游戏结束"}
+              🎉 正确！得分 {score}
             </p>
-            {phase === "won" && (
-              <p className="mt-2 text-lg text-text-muted">答案：{answer}</p>
-            )}
-            {phase === "lost" && target && (
-              <p className="mt-2 text-sm text-text-muted">
-                正确答案是：{answer}（来自《{target.poem.title}》）
-              </p>
-            )}
+            <p className="mt-2 text-lg text-text-muted">答案：{answer}</p>
           </div>
           <button
             onClick={pickNewPuzzle}

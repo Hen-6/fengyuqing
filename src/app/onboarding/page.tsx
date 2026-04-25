@@ -2,11 +2,11 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FEIHUA_CHARS } from "@/lib/poems";
 import { getRandomLinesWithChar, verifyLineExists } from "@/lib/poems";
 import { loadStore, markPoemAnswered, initializeAllPoems } from "@/lib/user";
 import { PoemCard } from "@/components/ui/PoemCard";
+import { VoiceInput } from "@/components/ui/VoiceInput";
 import { Poem } from "@/lib/poems";
 
 const ROUND_CHARS = [5, 10, 10]; // 轮次字符数
@@ -31,7 +31,6 @@ interface RoundState {
 }
 
 export default function OnboardingPage() {
-  const router = useRouter();
   const [round, setRound] = useState(0); // 0,1,2
   const [charIndex, setCharIndex] = useState(0);
   const [states, setStates] = useState<RoundState[]>([]);
@@ -126,7 +125,7 @@ export default function OnboardingPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-6">
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 paper-texture">
         <div className="text-center space-y-6 max-w-md">
           <div className="text-5xl">🎉</div>
           <h1 className="text-3xl font-bold text-ink">测评完成！</h1>
@@ -138,7 +137,7 @@ export default function OnboardingPage() {
           </p>
           <Link
             href="/"
-            className="inline-block rounded-2xl bg-accent px-8 py-4 text-white font-semibold hover:bg-red-700 transition"
+            className="btn-primary inline-block px-8 py-4"
           >
             开始学习
           </Link>
@@ -149,7 +148,7 @@ export default function OnboardingPage() {
 
   if (states.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-6">
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 paper-texture">
         <div className="text-center space-y-6 max-w-md">
           <div className="text-5xl">🌸</div>
           <h1 className="text-3xl font-bold text-ink">欢迎来到风雨情</h1>
@@ -161,7 +160,7 @@ export default function OnboardingPage() {
           </p>
           <button
             onClick={handleStart}
-            className="rounded-2xl bg-accent px-8 py-4 text-white font-semibold hover:bg-red-700 transition"
+            className="btn-primary"
           >
             开始测评
           </button>
@@ -176,7 +175,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg px-6 py-8">
+    <div className="min-h-screen paper-texture px-6 py-8">
       <div className="mx-auto max-w-lg space-y-6">
         {/* 进度条 */}
         <div className="space-y-1">
@@ -213,16 +212,20 @@ export default function OnboardingPage() {
 
             {!currentState.result && (
               <>
-                <input
-                  type="text"
-                  value={currentState.userInput}
-                  onChange={(e) => handleSubmit(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && currentState.feedback && currentState.result !== null && handleNext()}
-                  placeholder="输入诗句"
-                  className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-lg text-ink
-                             placeholder:text-text-muted focus:border-accent focus:outline-none text-center"
-                  autoFocus
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={currentState.userInput}
+                    onChange={(e) => handleSubmit(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && currentState.feedback && currentState.result !== null && handleNext()}
+                    placeholder="输入诗句"
+                    className="input-chinese flex-1 text-center"
+                    autoFocus
+                  />
+                  <VoiceInput
+                    onResult={(text) => handleSubmit(text)}
+                  />
+                </div>
                 {currentState.feedback && (
                   <p className={`text-center text-sm ${currentState.feedback.ok ? "text-correct" : "text-accent"}`}>
                     {currentState.feedback.msg}
@@ -230,7 +233,7 @@ export default function OnboardingPage() {
                 )}
                 <button
                   onClick={() => handleSubmit(currentState.userInput)}
-                  className="w-full rounded-xl bg-accent py-3 font-semibold text-white hover:bg-red-700 transition"
+                  className="btn-primary w-full"
                 >
                   提交
                 </button>
@@ -244,7 +247,7 @@ export default function OnboardingPage() {
                 )}
                 <button
                   onClick={handleNext}
-                  className="w-full rounded-xl bg-accent py-3 font-semibold text-white hover:bg-red-700 transition"
+                  className="btn-primary w-full"
                 >
                   {charIndex + 1 < chars.length ? "下一题" : "进入下一轮"}
                 </button>
