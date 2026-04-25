@@ -44,13 +44,13 @@ body {
   color: var(--text);
   font-family: "Noto Serif SC", "Source Han Serif CN", "SimSun", Georgia, serif;
   -webkit-font-smoothing: antialiased;
-  /* 背景：水墨山水 SVG 永远在最底层 */
+  /* 背景：水墨山水 SVG — 100% 比例缩放，不裁剪 */
   background-image: url("/fengyuqing/ink-bg.svg");
   background-repeat: no-repeat;
-  background-size: cover;
+  background-size: 100% 100%;
   background-position: center center;
   background-attachment: fixed;
-  background-color: #f5f0e8;
+  background-color: #f2ece0;
 }
 
 /* 宣纸纹理叠加 — 增强纸张质感 */
