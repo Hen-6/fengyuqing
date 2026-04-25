@@ -1,0 +1,28 @@
+name: Discord Daily Poem
+
+on:
+  schedule:
+    - cron: "0 14 * * *"  # 每天 UTC 14:00 = 北京时间 22:00
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r discord-bot/requirements.txt
+
+      - name: Run daily poem bot
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          POEMS_JSON_PATH: data/poems.json
+        run: python -m discord_bot.daily
