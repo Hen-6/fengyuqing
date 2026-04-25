@@ -92,6 +92,11 @@ export default function HomePage() {
         {/* 学习进度 */}
         <FamiliarityChart />
 
+        {/* 国风分隔线 */}
+        <div className="guofeng-divider">
+          <span className="text-accent/40 text-sm">✦</span>
+        </div>
+
         {/* 游戏入口 */}
         <section>
           <div className="title-decoration">
@@ -118,7 +123,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <hr className="section-divider" />
+        <div className="ink-divider" />
 
         {/* 每日推荐 */}
         <Link
@@ -146,7 +151,7 @@ export default function HomePage() {
           <span className="ml-auto text-xl text-text-muted">›</span>
         </Link>
 
-        <hr className="section-divider" />
+        <div className="ink-divider" />
 
         {/* 数据管理 */}
         <section className="guofeng-card p-5">
