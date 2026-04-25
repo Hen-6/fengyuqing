@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320" style="position:fixed;bottom:0;left:0;width:100%;pointer-events:none;z-index:0;opacity:0.06" preserveAspectRatio="xMidYMax meet">
+  <defs>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8B7355" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#8B7355" stop-opacity="0.5"/>
+    </linearGradient>
+  </defs>
+  <!-- 水波纹层 -->
+  <path d="M0 320 Q180 280 360 300 Q540 320 720 290 Q900 260 1080 285 Q1260 310 1440 280 L1440 320 Z" fill="url(#waveGrad)" opacity="0.4"/>
+  <path d="M0 320 Q200 300 400 315 Q600 330 800 305 Q1000 280 1200 300 Q1350 315 1440 295 L1440 320 Z" fill="#8B7355" opacity="0.15"/>
+  <!-- 远山剪影 -->
+  <path d="M-100 320 L-50 200 L50 250 L150 180 L280 230 L380 160 L520 210 L650 150 L780 200 L900 140 L1050 190 L1200 130 L1350 180 L1440 150 L1440 320 Z" fill="#2c2416" opacity="0.15"/>
+</svg>

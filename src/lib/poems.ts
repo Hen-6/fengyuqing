@@ -52,7 +52,8 @@ const _charIndex: CharIndex = new Map();
 export interface CoupletEntry {
   poemId: string;
   lineIndex: number;      // 起始句索引（偶数：1、3、5句）
-  cleanPair: string;      // 去标点合并，如"床前明月光疑是地上霜"
+  cleanPair: string;       // 去标点合并，如"床前明月光疑是地上霜"
+  rawPair: string;        // 含标点合并，如"床前明月光，疑是地上霜。"
   charCount: number;      // 5 或 7
   poem: Poem;
 }
@@ -61,6 +62,7 @@ const _coupletIndex: CoupletEntry[] = [];
 function buildIndexes() {
   for (const poem of POEMS) {
     const { id, cleanLines } = poem;
+    const rawLines = poem.lines ?? cleanLines;
 
     // 字符索引
     for (const char of poem.allChars) {
@@ -81,10 +83,11 @@ function buildIndexes() {
       const l1 = cleanLines[i];
       const l2 = cleanLines[i + 1];
       if (l1.length < 4 || l2.length < 4) continue;
-      const pair = l1 + l2;
       const charCount = l1.length; // 5 或 7
       if (charCount !== 5 && charCount !== 7) continue;
-      _coupletIndex.push({ poemId: id, lineIndex: i, cleanPair: pair, charCount, poem });
+      const r1 = rawLines[i] ?? l1;
+      const r2 = rawLines[i + 1] ?? l2;
+      _coupletIndex.push({ poemId: id, lineIndex: i, cleanPair: l1 + l2, rawPair: r1 + r2, charCount, poem });
     }
   }
 }
@@ -134,13 +137,61 @@ export function getRandomLinesWithChar(char: string, count: number): { poem: Poe
   return results.slice(0, count);
 }
 
-/** 验证诗句是否在库中 */
-export function verifyLineExists(cleanLine: string): { found: boolean; poem: Poem | null; lineIndex: number } {
-  const hits = _lineIndex.get(cleanLine);
+/** 去除所有中文标点符号 */
+export function stripPunctuation(s: string): string {
+  return s.replace(/[，。？！、；：""''【】『』「」()（）·—–\-…\s.,?!'":;[\]「」『』【】]/g, "");
+}
+
+/** Levenshtein 编辑距离 */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/** 验证诗句是否在库中（自动去除标点后匹配） */
+export function verifyLineExists(rawLine: string): { found: boolean; poem: Poem | null; lineIndex: number } {
+  const clean = stripPunctuation(rawLine);
+  const hits = _lineIndex.get(clean);
   if (!hits || hits.length === 0) return { found: false, poem: null, lineIndex: -1 };
   const hit = hits[0];
   const poem = getPoemById(hit.poemId);
   return { found: true, poem: poem ?? null, lineIndex: hit.lineIndex };
+}
+
+/** 查找相近诗词（当精确匹配失败时） */
+export function findSimilarLines(rawLine: string, maxResults = 5): { poem: Poem; lineIndex: number; cleanLine: string; distance: number }[] {
+  const clean = stripPunctuation(rawLine);
+  if (!clean) return [];
+
+  const results: { poem: Poem; lineIndex: number; cleanLine: string; distance: number }[] = [];
+  const len = clean.length;
+  const minLen = Math.max(2, len - 3);
+  const maxLen = len + 3;
+
+  for (const poem of POEMS) {
+    for (let i = 0; i < poem.cleanLines.length; i++) {
+      const cl = poem.cleanLines[i];
+      if (cl.length < minLen || cl.length > maxLen) continue;
+      const dist = levenshtein(clean, cl);
+      if (dist <= Math.max(2, Math.ceil(len * 0.3))) {
+        results.push({ poem, lineIndex: i, cleanLine: cl, distance: dist });
+      }
+    }
+  }
+
+  // 按编辑距离升序，取前 maxResults
+  results.sort((a, b) => a.distance - b.distance);
+  return results.slice(0, maxResults);
 }
 
 /** 获取今日推荐诗（按 rank 顺延） */

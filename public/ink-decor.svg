@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" style="display:block">
+  <defs>
+    <radialGradient id="sealGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c0392b" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#c0392b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 印章光晕 -->
+  <circle cx="200" cy="200" r="180" fill="url(#sealGrad)"/>
+
+  <!-- 山形线条装饰 -->
+  <g stroke="#c0392b" stroke-width="1" fill="none" opacity="0.15">
+    <path d="M40 320 Q100 260 160 280 Q220 300 280 250 Q320 220 360 240"/>
+    <path d="M30 340 Q90 290 150 310 Q210 330 270 280 Q330 250 370 270"/>
+    <path d="M50 310 Q110 250 170 270 Q230 290 290 240 Q350 200 380 220"/>
+  </g>
+
+  <!-- 毛笔点墨效果 -->
+  <g fill="#2c2416" opacity="0.06">
+    <circle cx="320" cy="80" r="40"/>
+    <circle cx="340" cy="100" r="25"/>
+    <circle cx="80" cy="320" r="35"/>
+    <circle cx="60" cy="340" r="20"/>
+  </g>
+
+  <!-- 云纹 -->
+  <g stroke="#8b7355" stroke-width="0.8" fill="none" opacity="0.1">
+    <path d="M60 80 Q80 60 100 80 Q120 100 140 80"/>
+    <path d="M260 320 Q280 300 300 320 Q320 340 340 320"/>
+    <path d="M320 180 Q340 160 360 180 Q380 200 360 180"/>
+  </g>
+</svg>

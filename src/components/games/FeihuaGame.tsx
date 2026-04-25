@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Poem, getCoupletsByCount } from "@/lib/poems";
-import { verifyLineExists } from "@/lib/poems";
+import { Poem, getCoupletsByCount, verifyLineExists, findSimilarLines, CoupletEntry } from "@/lib/poems";
 import { loadStore, markPoemAnswered } from "@/lib/user";
 import { PoemCard } from "@/components/ui/PoemCard";
 import { CharPicker } from "@/components/ui/CharPicker";
@@ -17,7 +16,7 @@ export function FeihuaGame() {
   const [randomMode, setRandomMode] = useState(false);
 
   // playing state
-  const [botCouplet, setBotCouplet] = useState<{ poem: Poem; lineIndex: number; cleanPair: string } | null>(null);
+  const [botCouplet, setBotCouplet] = useState<CoupletEntry | null>(null);
   const [usedIds, setUsedIds] = useState<Set<string>>(new Set());
   const [userInput, setUserInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -26,6 +25,7 @@ export function FeihuaGame() {
   const [showBotCard, setShowBotCard] = useState(false);
   const [showBotModal, setShowBotModal] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState(3);
+  const [similarPoems, setSimilarPoems] = useState<{ poem: Poem; lineIndex: number; cleanLine: string; distance: number }[]>([]);
 
   const store = loadStore();
 
@@ -60,6 +60,7 @@ export function FeihuaGame() {
     setVerifiedPoem(null);
     setShowCard(false);
     setShowBotCard(false);
+    setSimilarPoems([]);
     setPhase("playing");
   }, [pickNewCouplet]);
 
@@ -82,10 +83,13 @@ export function FeihuaGame() {
     // 用户输入 → 验证 → 自动默认 Level 3
     const { found, poem } = verifyLineExists(input);
     if (!found) {
-      setFeedback({ ok: false, msg: "诗句不在库中，请检查是否有错别字" });
+      const similar = findSimilarLines(input);
+      setSimilarPoems(similar);
+      setFeedback({ ok: false, msg: "诗句不在库中" });
       return;
     }
 
+    setSimilarPoems([]);
     setVerifiedPoem(poem);
     setFeedback({ ok: true, msg: "✓ 正确！" });
     if (poem) {
@@ -183,18 +187,21 @@ export function FeihuaGame() {
             </div>
           </div>
 
-          {/* 系统出句（整联对句） */}
+          {/* 系统出句（整联对句，含标点） */}
           <div
             className="group relative rounded-xl border border-border bg-surface p-4 cursor-pointer hover:border-accent transition-colors"
             onClick={() => setShowBotModal(true)}
             title="点击查看完整诗词"
           >
             <p className="text-xs text-text-muted mb-2">请接出含「{selectedChar}」的诗句</p>
-            {/* 竖排对句 */}
+            {/* 展示含标点原句 */}
             <div className="space-y-1">
               {(() => {
-                const l1 = botCouplet.cleanPair.slice(0, botCouplet.cleanPair.length / 2);
-                const l2 = botCouplet.cleanPair.slice(botCouplet.cleanPair.length / 2);
+                const raw = botCouplet!.rawPair;
+                const half = Math.floor(raw.length / 2);
+                // 找中间分割点（大约在诗文一半处）
+                const l1 = raw.slice(0, half);
+                const l2 = raw.slice(half);
                 return (
                   <>
                     <div className="text-lg text-ink leading-relaxed">{l1}</div>
@@ -208,7 +215,7 @@ export function FeihuaGame() {
               点击查看全文 →
             </div>
             <p className="mt-2 text-xs text-text-muted">
-              来自《{botCouplet.poem.title}》— {botCouplet.poem.author}
+              来自《{botCouplet!.poem.title}》— {botCouplet!.poem.author}
             </p>
           </div>
 
@@ -228,10 +235,37 @@ export function FeihuaGame() {
                 <VoiceInput onResult={handleVoiceResult} />
               </div>
 
-              {feedback && (
+              {feedback && !feedback.ok && (
                 <p className={`text-center text-sm ${feedback.ok ? "text-[var(--correct)]" : "text-[var(--accent)]"}`}>
                   {feedback.msg}
                 </p>
+              )}
+
+              {/* 相近诗词列表 */}
+              {similarPoems.length > 0 && (
+                <div className="rounded-xl border border-border bg-surface p-4">
+                  <p className="mb-2 text-xs text-text-muted text-center">最相近的诗句：</p>
+                  <div className="space-y-2">
+                    {similarPoems.map((item, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setVerifiedPoem(item.poem);
+                          setFeedback({ ok: true, msg: "✓ 已选用该诗句" });
+                          setSimilarPoems([]);
+                          if (item.poem) markPoemAnswered(store, item.poem.id);
+                          setShowCard(true);
+                        }}
+                        className="w-full text-left rounded-lg border border-border px-3 py-2 hover:border-accent hover:bg-accent-light transition-colors"
+                      >
+                        <div className="text-sm text-ink">{item.cleanLine}</div>
+                        <div className="text-xs text-text-muted">
+                          《{item.poem.title}》— {item.poem.author}（差异 {item.distance} 字）
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
 
               <button
@@ -281,14 +315,11 @@ export function FeihuaGame() {
 
               {/* 系统诗词大弹窗（点击出句触发） */}
               {showBotModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                  <PoemCard
-                    poem={botCouplet.poem}
-                    onClose={() => setShowBotModal(false)}
-                  />
-                  {/* 熟练度自测叠加在诗词卡下方 */}
-                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
-                    <div className="rounded-xl border border-border bg-surface p-4 shadow-xl">
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowBotModal(false)} />
+                  <div className="relative z-10 w-full max-w-md space-y-4">
+                    <PoemCard poem={botCouplet!.poem} onClose={() => setShowBotModal(false)} />
+                    <div className="rounded-xl border border-border bg-surface/95 backdrop-blur p-4 shadow-xl">
                       <p className="mb-3 text-center text-sm text-text-muted">
                         你对这首诗的熟悉程度？
                       </p>

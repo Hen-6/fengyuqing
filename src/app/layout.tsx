@@ -13,7 +13,42 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-Hans">
-      <body>{children}</body>
+      <body>
+        {/* 山水背景层 */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            overflow: "hidden",
+          }}
+        >
+          {/* 远山 + 云雾 */}
+          <img
+            src="/ink-bg.svg"
+            alt=""
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.08 }}
+          />
+          {/* 竹韵边饰 */}
+          <img
+            src="/bamboo.svg"
+            alt=""
+            style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "120px", objectFit: "cover", opacity: 0.1 }}
+          />
+          {/* 水波底纹 */}
+          <img
+            src="/cloud-wave.svg"
+            alt=""
+            style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "160px", objectFit: "cover", opacity: 0.08 }}
+          />
+        </div>
+        {/* 主内容层 */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          {children}
+        </div>
+      </body>
     </html>
   );
 }

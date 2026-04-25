@@ -32,20 +32,40 @@ def clean_html(text: str) -> str:
     text = re.sub(r"<[^>]+>", "", text)
     return text.strip()
 
+def split_lines_preserve_punct(raw_line: str) -> list[str]:
+    """
+    将一行原始文本拆分为多句，保留句末标点。
+    先按逗号/顿号拆分，再按句末标点拆分。
+    例: '床前明月光，疑是地上霜。举头望明月，低头思故乡。'
+    → ['床前明月光，', '疑是地上霜。', '举头望明月，', '低头思故乡。']
+    """
+    # 第一步：按逗号/顿号拆分（保留标点）
+    comma_parts = re.split(r"(?<=[，、])", raw_line)
+    result: list[str] = []
+    for part in comma_parts:
+        part = part.strip()
+        if not part:
+            continue
+        # 第二步：每个子句再按句末标点拆分（保留标点）
+        sub_parts = re.split(r"(?<=[。！？；])", part)
+        for sp in sub_parts:
+            sp = sp.strip()
+            if sp and len(re.sub(r"[，。！？、；：""''【】「」()（）.?!,·《》]", "", sp)) >= 2:
+                result.append(sp)
+    return result
+
 def split_lines(raw_line: str) -> list[str]:
     """
-    将一行原始文本拆分为多句。
+    将一行原始文本拆分为多句（无标点版本）。
     先按中文逗号、顿号拆分对句，再按句末标点拆分段落。
     例: '床前明月光，疑是地上霜。' → ['床前明月光', '疑是地上霜']
     """
-    # 第一步：按逗号/顿号拆分对句（不含句末标点的子句）
     comma_parts = re.split(r"[，、]", raw_line)
     result: list[str] = []
     for part in comma_parts:
         part = part.strip()
         if not part:
             continue
-        # 第二步：每个子句再按句末标点拆分
         sub_parts = re.split(r"[。！？；]", part)
         for sp in sub_parts:
             sp = sp.strip()
@@ -250,24 +270,30 @@ def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
                     continue
 
                 # 先清理 HTML，再拆分句子（顺序很重要！）
-                # split_lines() already splits on 句末标点, returns clean parts
-                all_lines: list[str] = []
+                # split_lines_preserve_punct: 保留标点 → lines
+                # split_lines: 无标点 → cleanLines
+                all_lines_raw: list[str] = []
+                all_lines_clean: list[str] = []
                 for item in raw_content:
                     cleaned = clean_html(str(item))
                     if not cleaned:
                         continue
-                    parts = split_lines(cleaned)  # already strips whitespace
-                    for part in parts:
-                        if part:
-                            all_lines.append(part)
+                    raw_parts = split_lines_preserve_punct(cleaned)
+                    clean_parts = split_lines(cleaned)
+                    for rp in raw_parts:
+                        if rp and rp not in all_lines_raw:
+                            all_lines_raw.append(rp)
+                    for cp in clean_parts:
+                        if cp and cp not in all_lines_clean:
+                            all_lines_clean.append(cp)
 
-                if not all_lines:
+                if not all_lines_raw:
                     continue
 
                 # 去相邻重复
                 seen_lines = set()
                 lines = []
-                for ln in all_lines:
+                for ln in all_lines_raw:
                     if ln not in seen_lines:
                         seen_lines.add(ln)
                         lines.append(ln)
