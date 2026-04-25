@@ -41,10 +41,29 @@
 html,
 body {
   min-height: 100%;
-  background: #f5f0e8;
   color: var(--text);
   font-family: "Noto Serif SC", "Source Han Serif CN", "SimSun", Georgia, serif;
   -webkit-font-smoothing: antialiased;
+  /* 背景：水墨山水 SVG 永远在最底层 */
+  background-image: url("/fengyuqing/ink-bg.svg");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center center;
+  background-attachment: fixed;
+  background-color: #f5f0e8;
+}
+
+/* 宣纸纹理叠加 — 增强纸张质感 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at 15% 25%, rgba(180, 150, 100, 0.07) 0%, transparent 45%),
+    radial-gradient(ellipse at 85% 75%, rgba(160, 130, 80, 0.06) 0%, transparent 40%),
+    radial-gradient(ellipse at 50% 10%, rgba(200, 170, 120, 0.05) 0%, transparent 35%);
 }
 
 /* 山水背景装饰 */
@@ -73,10 +92,10 @@ body {
 
 /* 宣纸纹理背景 */
 .paper-texture {
-  background-color: var(--bg);
+  /* 背景已在 body 层，此处仅加内容区的微妙纸纹 */
   background-image:
-    radial-gradient(ellipse at 20% 30%, rgba(200, 160, 100, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 70%, rgba(180, 130, 60, 0.05) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 30%, rgba(200, 160, 100, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(180, 130, 60, 0.03) 0%, transparent 50%);
   background-attachment: fixed;
 }
 

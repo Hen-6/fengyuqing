@@ -1,53 +1,130 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" preserveAspectRatio="xMidYMid slice">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" width="1440" height="900">
   <defs>
-    <linearGradient id="mist1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8B7355" stop-opacity="0"/>
-      <stop offset="50%" stop-color="#8B7355" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#8B7355" stop-opacity="0"/>
+    <!-- 宣纸纹理 -->
+    <filter id="paperNoise" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+      <feBlend in="SourceGraphic" in2="gray" mode="multiply" result="blend"/>
+      <feComposite in="blend" in2="SourceGraphic" operator="in"/>
+    </filter>
+
+    <!-- 墨迹晕染滤镜 -->
+    <filter id="inkBleed" x="-8%" y="-8%" width="116%" height="116%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- 柔化 -->
+    <filter id="softEdge" x="-3%" y="-3%" width="106%" height="106%">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
+
+    <!-- 淡墨渐变 -->
+    <linearGradient id="g1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8dfd0" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#b8a888" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#6b5540" stop-opacity="0.40"/>
     </linearGradient>
-    <linearGradient id="mist2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#C0392B" stop-opacity="0"/>
-      <stop offset="40%" stop-color="#C0392B" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#C0392B" stop-opacity="0"/>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c8b898" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#8a7260" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#3d3020" stop-opacity="0.55"/>
     </linearGradient>
-    <linearGradient id="ink1" x1="0%" y1="100%" x2="0%" y2="0%">
-      <stop offset="0%" stop-color="#2c2416" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#2c2416" stop-opacity="0"/>
+    <linearGradient id="g3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9a8070" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#5a4a38" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#1a140a" stop-opacity="0.70"/>
+    </linearGradient>
+    <linearGradient id="gMist" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#d8cbb0" stop-opacity="0.60"/>
+      <stop offset="100%" stop-color="#d8cbb0" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gWater" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8a7560" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#7a6548" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#4a3a28" stop-opacity="0.35"/>
     </linearGradient>
   </defs>
 
-  <!-- 远山 -->
-  <path d="M-50 800 L80 520 L180 580 L280 450 L380 510 L500 380 L620 460 L720 350 L820 430 L920 300 L1020 390 L1120 260 L1200 320 L1200 800 Z" fill="url(#ink1)" opacity="0.6"/>
+  <!-- 宣纸底 -->
+  <rect width="1440" height="900" fill="#f2ece0"/>
 
-  <!-- 中山 -->
-  <path d="M-50 800 L50 600 L150 660 L250 520 L380 600 L500 480 L640 560 L760 440 L880 520 L1000 400 L1120 480 L1200 400 L1200 800 Z" fill="#2c2416" opacity="0.5"/>
+  <!-- 远山 — 大片留白，寥寥数笔 -->
+  <path
+    d="M-100,920 C80,560 200,620 360,460 C500,320 620,400 760,290 C880,190 1000,300 1160,210 C1280,140 1380,260 1540,200 L1540,920 Z"
+    fill="url(#g1)"
+    filter="url(#inkBleed)"
+  />
+  <!-- 远山 — 二层 -->
+  <path
+    d="M-100,920 C60,700 180,760 340,600 C480,460 580,540 700,440 C820,340 920,430 1060,340 C1180,260 1280,360 1540,280 L1540,920 Z"
+    fill="url(#g2)"
+    filter="url(#inkBleed)"
+  />
+  <!-- 远山 — 三层（近景） -->
+  <path
+    d="M-100,920 C100,780 240,840 400,690 C540,560 640,640 760,540 C880,440 980,530 1120,430 C1240,340 1340,430 1540,350 L1540,920 Z"
+    fill="url(#g3)"
+    filter="url(#inkBleed)"
+  />
 
-  <!-- 近山 -->
-  <path d="M-50 800 L100 680 L220 740 L360 620 L480 700 L600 600 L720 680 L860 560 L980 640 L1100 580 L1200 620 L1200 800 Z" fill="#1a1612" opacity="0.7"/>
+  <!-- 留白区域暗示 — 右上大面积空白，经典水墨留白 -->
+  <rect x="1100" y="0" width="340" height="280" fill="#f2ece0" opacity="0.50"/>
 
-  <!-- 水墨云雾 -->
-  <ellipse cx="200" cy="480" rx="300" ry="80" fill="url(#mist1)" opacity="0.5"/>
-  <ellipse cx="700" cy="400" rx="350" ry="90" fill="url(#mist1)" opacity="0.4"/>
-  <ellipse cx="1100" cy="500" rx="280" ry="70" fill="url(#mist1)" opacity="0.3"/>
+  <!-- 晨雾/云气 — 用渐变椭圆营造空间感 -->
+  <ellipse cx="300" cy="540" rx="520" ry="155" fill="#ddd0b8" opacity="0.50"/>
+  <ellipse cx="1100" cy="480" rx="560" ry="165" fill="#d4c4a8" opacity="0.42"/>
+  <ellipse cx="700" cy="700" rx="480" ry="115" fill="#e8dcc8" opacity="0.48"/>
+  <ellipse cx="100" cy="620" rx="280" ry="90" fill="#e0d0b8" opacity="0.38"/>
+  <ellipse cx="1380" cy="600" rx="320" ry="105" fill="#d8cbb0" opacity="0.35"/>
 
-  <!-- 松树剪影 -->
-  <g fill="#1a1612" opacity="0.6">
-    <!-- 松1 -->
-    <polygon points="160,680 145,720 155,720 140,760 150,760 135,800 185,800 170,760 180,760 165,720 175,720"/>
-    <!-- 松2 -->
-    <polygon points="1050,580 1035,620 1045,620 1030,660 1040,660 1025,700 1075,700 1060,660 1070,660 1055,620 1065,620"/>
-    <!-- 松3 -->
-    <polygon points="600,640 585,680 595,680 580,720 590,720 575,760 625,760 610,720 620,720 605,680 615,680"/>
+  <!-- 松树 — 淡墨剪影 -->
+  <g fill="#2a2018" opacity="0.20">
+    <polygon points="200,780 180,820 192,820 173,860 185,860 165,900 235,900 215,860 227,860 208,820 220,820"/>
+    <polygon points="155,800 135,840 147,840 128,880 140,880 120,920 190,920 170,880 182,880 163,840 175,840"/>
+  </g>
+  <g fill="#2a2018" opacity="0.16">
+    <polygon points="1310,720 1292,758 1304,758 1286,798 1298,798 1278,838 1342,838 1324,798 1336,798 1318,758 1330,758"/>
+    <polygon points="760,770 742,808 754,808 736,848 748,848 728,888 792,888 774,848 786,848 768,808 780,808"/>
   </g>
 
-  <!-- 点缀红叶/梅花 -->
-  <g fill="#c0392b" opacity="0.6">
-    <circle cx="150" cy="740" r="4"/>
-    <circle cx="170" cy="755" r="3"/>
-    <circle cx="135" cy="750" r="3.5"/>
-    <circle cx="1040" cy="640" r="4"/>
-    <circle cx="1060" cy="655" r="3"/>
-    <circle cx="590" cy="700" r="3.5"/>
-    <circle cx="610" cy="715" r="3"/>
+  <!-- 水面 — 淡墨倒影 -->
+  <path
+    d="M-100,870 C100,855 280,868 460,854 C640,840 820,858 1000,844 C1180,830 1360,848 1540,835 L1540,920 L-100,920 Z"
+    fill="url(#gWater)"
+  />
+  <!-- 水波纹 -->
+  <g stroke="#6a5540" stroke-width="0.8" fill="none" opacity="0.22">
+    <path d="M80,875 Q200,870 320,875 Q440,880 560,875 Q680,870 800,875 Q920,880 1040,875 Q1160,870 1280,875 Q1400,870 1480,875"/>
+    <path d="M120,890 Q260,885 400,890 Q540,895 680,890 Q820,885 960,890 Q1100,895 1240,890 Q1380,885 1500,890"/>
+    <path d="M60,858 Q180,853 300,858 Q420,863 540,858 Q660,853 780,858 Q900,863 1020,858 Q1140,853 1260,858 Q1380,853 1500,858"/>
   </g>
+
+  <!-- 点缀小花 -->
+  <g fill="#c0392b" opacity="0.30">
+    <circle cx="188" cy="858" r="3.5"/><circle cx="204" cy="874" r="2.8"/>
+    <circle cx="172" cy="870" r="3"/><circle cx="216" cy="862" r="2.5"/>
+    <circle cx="1302" cy="792" r="3.5"/><circle cx="1318" cy="808" r="2.8"/>
+    <circle cx="746" cy="842" r="3"/>
+  </g>
+
+  <!-- 飞鸟 -->
+  <g stroke="#4a3a28" stroke-width="1.2" fill="none" opacity="0.18">
+    <path d="M220,290 Q232,280 244,290 Q256,280 268,290"/>
+    <path d="M290,272 Q302,262 314,272 Q326,262 338,272"/>
+    <path d="M950,318 Q962,308 974,318 Q986,308 998,318"/>
+    <path d="M1040,295 Q1052,285 1064,295 Q1076,285 1088,295"/>
+    <path d="M1140,258 Q1152,248 1164,258 Q1176,248 1188,258"/>
+  </g>
+
+  <!-- 落款印章 -->
+  <rect x="1290" y="840" width="60" height="60" fill="#c0392b" opacity="0.07" rx="2"/>
+  <rect x="1298" y="848" width="44" height="44" fill="none" stroke="#c0392b" stroke-width="1.8" opacity="0.12" rx="1"/>
+  <text x="1320" y="878" text-anchor="middle" font-size="18" fill="#c0392b" opacity="0.20" font-family="serif" font-weight="bold">詩</text>
+
+  <!-- 题字淡墨 -->
+  <text x="140" y="868" font-size="11" fill="#8a7260" opacity="0.09" font-family="serif" font-style="italic">臥遊</text>
 </svg>
