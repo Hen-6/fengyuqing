@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #faf7f2;
-  --surface: #ffffff;
+  --bg: #f5f0e8;
+  --surface: rgba(255, 252, 245, 0.92);
   --text: #1a1612;
   --text-muted: #8b7355;
   --accent: #c0392b;
   --accent-light: #f9e8e7;
-  --border: #e8e0d4;
+  --border: #d8cfc2;
   --ink: #2c2416;
-  --paper: #faf7f2;
+  --paper: #f5f0e8;
   --correct: #27ae60;
   --present: #d4a017;
   --absent: #78716c;
@@ -41,7 +41,7 @@
 html,
 body {
   min-height: 100%;
-  background: var(--bg);
+  background: #f5f0e8;
   color: var(--text);
   font-family: "Noto Serif SC", "Source Han Serif CN", "SimSun", Georgia, serif;
   -webkit-font-smoothing: antialiased;
