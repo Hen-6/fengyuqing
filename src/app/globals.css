@@ -10,8 +10,6 @@
   --border: #e8e0d4;
   --ink: #2c2416;
   --paper: #faf7f2;
-
-  /* game colours */
   --correct: #27ae60;
   --present: #d4a017;
   --absent: #78716c;
@@ -34,22 +32,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f0d0b;
-    --surface: #1a1714;
-    --text: #f0ebe4;
-    --text-muted: #a09080;
-    --accent: #ef5350;
-    --accent-light: #2a1a19;
-    --border: #2e2820;
-    --ink: #e8e0d4;
-    --paper: #1a1714;
-    --correct: #2ecc71;
-    --present: #f39c12;
-    --absent: #4a4540;
-  }
-}
+/* === 国风基础样式 === */
 
 * {
   box-sizing: border-box;
@@ -62,6 +45,163 @@ body {
   color: var(--text);
   font-family: "Noto Serif SC", "Source Han Serif CN", "SimSun", Georgia, serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 宣纸纹理背景 */
+.paper-texture {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 30%, rgba(200, 160, 100, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(180, 130, 60, 0.05) 0%, transparent 50%);
+}
+
+/* 国风卡片 */
+.guofeng-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  box-shadow: 0 1px 4px rgba(44, 36, 22, 0.06);
+}
+
+/* 标题装饰 */
+.title-decoration {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.title-decoration::before,
+.title-decoration::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border), transparent);
+}
+
+/* 印章标签 */
+.stamp {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 0.25rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  transform: rotate(-3deg);
+  font-family: "Noto Serif SC", serif;
+}
+
+/* 分隔线 */
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+/* 主要按钮 */
+.btn-primary {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+  text-align: center;
+}
+.btn-primary:hover {
+  background-color: #a93226;
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* 次要按钮 */
+.btn-secondary {
+  display: block;
+  padding: 0.75rem 1rem;
+  background-color: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  text-align: center;
+}
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 中文输入框 */
+.input-chinese {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  font-size: 1.125rem;
+  text-align: center;
+  letter-spacing: 0.05em;
+  transition: border-color 0.15s;
+  outline: none;
+  -webkit-ime-mode: active;
+  ime-mode: active;
+}
+.input-chinese::placeholder {
+  color: var(--text-muted);
+}
+.input-chinese:focus {
+  border-color: var(--accent);
+}
+
+/* 熟练度按钮 */
+.level-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+  font-size: 0.7rem;
+  min-width: 2.5rem;
+}
+.level-btn.active,
+.level-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-light);
+}
+.level-num {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.level-name {
+  font-size: 0.6rem;
+  white-space: nowrap;
+}
+
+/* 诗词卡 */
+.poem-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  padding: 1.25rem;
+  box-shadow: 0 2px 8px rgba(44, 36, 22, 0.08);
 }
 
 /* 五言竖排 */
