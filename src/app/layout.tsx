@@ -25,23 +25,23 @@ export default function RootLayout({
             overflow: "hidden",
           }}
         >
-          {/* 远山 + 云雾 */}
+          {/* 远山层 - 更强对比，opacity调高 */}
           <img
             src="/fengyuqing/ink-bg.svg"
             alt=""
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.08 }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.35 }}
           />
-          {/* 竹韵边饰 */}
+          {/* 竹韵边饰 - 右侧 */}
           <img
             src="/fengyuqing/bamboo.svg"
             alt=""
-            style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "120px", objectFit: "cover", opacity: 0.1 }}
+            style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "140px", objectFit: "cover", opacity: 0.45 }}
           />
           {/* 水波底纹 */}
           <img
             src="/fengyuqing/cloud-wave.svg"
             alt=""
-            style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "160px", objectFit: "cover", opacity: 0.08 }}
+            style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "200px", objectFit: "cover", opacity: 0.3 }}
           />
         </div>
         {/* 主内容层 */}
