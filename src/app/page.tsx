@@ -58,7 +58,7 @@ export default function HomePage() {
         {/* 引言 */}
         <div className="text-center py-1">
           <p className="text-sm text-text-muted italic">
-            「风雨无情，诗词有心」
+            「归去，也无风雨也无晴」
           </p>
         </div>
 
@@ -159,7 +159,7 @@ export default function HomePage() {
 
         {/* 底部 */}
         <div className="text-center text-xs text-text-muted pt-4 pb-2">
-          <p>风雨无情，诗词有心</p>
+          <p>归去，也无风雨也无晴</p>
           <p className="mt-1 opacity-60">风雨情 · 古诗词练习平台</p>
         </div>
       </div>
