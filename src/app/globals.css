@@ -44,13 +44,7 @@ body {
   color: var(--text);
   font-family: "Noto Serif SC", "Source Han Serif CN", "SimSun", Georgia, serif;
   -webkit-font-smoothing: antialiased;
-  /* 程序化水墨山水背景 — shuimo-core 生成，mix-blend-mode:multiply 叠加宣纸质感 */
-  background-image: url("/fengyuqing/shuimo-bg.png");
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center center;
-  background-attachment: fixed;
-  background-color: #f0ebe0;
+  /* 背景由 ShanShuiBackground.tsx 动态设置 */
 }
 
 /* 宣纸纹理叠加 — 增强纸张质感 */
