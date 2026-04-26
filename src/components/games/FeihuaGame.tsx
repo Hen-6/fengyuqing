@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Poem, getCoupletsByCount, verifyLineExists, findSimilarLines, CoupletEntry } from "@/lib/poems";
-import { loadStore, markPoemAnswered } from "@/lib/user";
+import { loadStore, markPoemAnswered, initializeAllPoems } from "@/lib/user";
 import { PoemCard } from "@/components/ui/PoemCard";
 import { CharPicker } from "@/components/ui/CharPicker";
 import { VoiceInput } from "@/components/ui/VoiceInput";
@@ -22,12 +22,17 @@ export function FeihuaGame() {
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const [verifiedPoem, setVerifiedPoem] = useState<Poem | null>(null);
   const [showCard, setShowCard] = useState(false);
-  const [showBotCard, setShowBotCard] = useState(false);
   const [showBotModal, setShowBotModal] = useState(false);
-  const [selectedLevel, setSelectedLevel] = useState(3);
   const [similarPoems, setSimilarPoems] = useState<{ poem: Poem; lineIndex: number; cleanLine: string; distance: number }[]>([]);
 
   const store = loadStore();
+
+  // 新用户首次进入飞花令时，初始化所有诗歌记录
+  useEffect(() => {
+    if (!store.initialized) {
+      initializeAllPoems(store);
+    }
+  }, [store]);
 
   // 随机选一个关键词
   const FEIHUA_CHARS = [
@@ -59,7 +64,7 @@ export function FeihuaGame() {
     setFeedback(null);
     setVerifiedPoem(null);
     setShowCard(false);
-    setShowBotCard(false);
+    setShowBotModal(false);
     setSimilarPoems([]);
     setPhase("playing");
   }, [pickNewCouplet]);
@@ -120,17 +125,8 @@ export function FeihuaGame() {
     setFeedback(null);
     setVerifiedPoem(null);
     setShowCard(false);
-    setShowBotCard(false);
-    setSelectedLevel(3);
+    setShowBotModal(false);
   }, [selectedChar, botCouplet, usedIds, pickNewCouplet]);
-
-  const handleConfirmLevel = useCallback(() => {
-    if (verifiedPoem) {
-      const { setLevel } = require("@/lib/user");
-      setLevel(store, verifiedPoem.id, selectedLevel);
-    }
-    handleNextForSameChar();
-  }, [verifiedPoem, selectedLevel, store, handleNextForSameChar]);
 
   const handleSwitchChar = useCallback(() => {
     setSelectedChar("");
@@ -139,7 +135,7 @@ export function FeihuaGame() {
     setFeedback(null);
     setVerifiedPoem(null);
     setShowCard(false);
-    setShowBotCard(false);
+    setShowBotModal(false);
     setPhase("pick");
     setRandomMode(false);
   }, []);
@@ -188,18 +184,13 @@ export function FeihuaGame() {
           </div>
 
           {/* 系统出句（整联对句，含标点） */}
-          <div
-            className="group relative rounded-xl border border-border bg-surface p-4 cursor-pointer hover:border-accent transition-colors"
-            onClick={() => setShowBotModal(true)}
-            title="点击查看完整诗词"
-          >
+          <div className="rounded-xl border border-border bg-surface p-4">
             <p className="text-xs text-text-muted mb-2">请接出含「{selectedChar}」的诗句</p>
             {/* 展示含标点原句 */}
             <div className="space-y-1">
               {(() => {
                 const raw = botCouplet!.rawPair;
                 const half = Math.floor(raw.length / 2);
-                // 找中间分割点（大约在诗文一半处）
                 const l1 = raw.slice(0, half);
                 const l2 = raw.slice(half);
                 return (
@@ -210,14 +201,50 @@ export function FeihuaGame() {
                 );
               })()}
             </div>
-            {/* Hover hint */}
-            <div className="absolute bottom-2 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-accent">
-              点击查看全文 →
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-xs text-text-muted">
+                来自《{botCouplet!.poem.title}》— {botCouplet!.poem.author}
+              </p>
+              <button
+                onClick={() => setShowBotModal(true)}
+                className="text-xs text-accent hover:underline"
+              >
+                查看全文
+              </button>
             </div>
-            <p className="mt-2 text-xs text-text-muted">
-              来自《{botCouplet!.poem.title}》— {botCouplet!.poem.author}
-            </p>
+
+            {/* 熟练度自测（系统给出的诗，始终可见） */}
+            <div className="mt-3 rounded-lg border border-border bg-paper/60 p-3">
+              <p className="mb-2 text-center text-xs text-text-muted">
+                你对这首诗的熟悉程度？
+              </p>
+              <div className="flex justify-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((lvl) => (
+                  <button
+                    key={lvl}
+                    onClick={() => {
+                      const { setLevel } = require("@/lib/user");
+                      setLevel(store, botCouplet!.poem.id, lvl);
+                    }}
+                    className="level-btn"
+                  >
+                    <span className="level-num">{lvl}</span>
+                    <span className="level-name">{["陌生", "认字", "识句", "成篇", "全知"][lvl - 1]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+
+          {/* 系统诗词大弹窗 */}
+          {showBotModal && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowBotModal(false)} />
+              <div className="relative z-10 w-full max-w-md">
+                <PoemCard poem={botCouplet!.poem} onClose={() => setShowBotModal(false)} />
+              </div>
+            </div>
+          )}
 
           {/* 输入区 */}
           {!showCard ? (
@@ -277,73 +304,6 @@ export function FeihuaGame() {
             </>
           ) : (
             <>
-              {/* 系统出句的诗词卡（用户可以自评熟练度） */}
-              {showBotCard && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowBotCard(false)}
-                    className="absolute -top-1 right-0 text-xs text-text-muted hover:text-accent"
-                  >
-                    收起
-                  </button>
-                  <PoemCard poem={botCouplet.poem} />
-
-                  {/* 熟练度自测（系统给出的诗） */}
-                  <div className="mt-3 rounded-xl border border-border bg-surface p-4">
-                    <p className="mb-3 text-center text-sm text-text-muted">
-                      你对这首诗的熟悉程度？
-                    </p>
-                    <div className="flex justify-center gap-1.5">
-                      {[1, 2, 3, 4, 5].map((lvl) => (
-                        <button
-                          key={lvl}
-                          onClick={() => {
-                            const { setLevel } = require("@/lib/user");
-                            setLevel(store, botCouplet!.poem.id, lvl);
-                            setShowBotCard(false);
-                          }}
-                          className="level-btn"
-                        >
-                          <span className="level-num">{lvl}</span>
-                          <span className="level-name">{["陌生", "认字", "识句", "成篇", "全知"][lvl - 1]}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 系统诗词大弹窗（点击出句触发） */}
-              {showBotModal && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowBotModal(false)} />
-                  <div className="relative z-10 w-full max-w-md space-y-4">
-                    <PoemCard poem={botCouplet!.poem} onClose={() => setShowBotModal(false)} />
-                    <div className="rounded-xl border border-border bg-surface/95 backdrop-blur p-4 shadow-xl">
-                      <p className="mb-3 text-center text-sm text-text-muted">
-                        你对这首诗的熟悉程度？
-                      </p>
-                      <div className="flex justify-center gap-1.5">
-                        {[1, 2, 3, 4, 5].map((lvl) => (
-                          <button
-                            key={lvl}
-                            onClick={() => {
-                              const { setLevel } = require("@/lib/user");
-                              setLevel(store, botCouplet!.poem.id, lvl);
-                              setShowBotModal(false);
-                            }}
-                            className="level-btn"
-                          >
-                            <span className="level-num">{lvl}</span>
-                            <span className="level-name">{["陌生", "认字", "识句", "成篇", "全知"][lvl - 1]}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* 用户接的诗 */}
               {verifiedPoem && (
                 <div className="relative">
@@ -354,7 +314,6 @@ export function FeihuaGame() {
                     收起
                   </button>
                   <PoemCard poem={verifiedPoem} />
-                  {/* 用户接的诗 → 自动 Level 3，不再提供自测 */}
                   <p className="mt-2 text-center text-xs text-text-muted">
                     ✓ 已记录为 Level 3
                   </p>

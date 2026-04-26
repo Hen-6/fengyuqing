@@ -11,7 +11,7 @@ export default function HomePage() {
 
   useEffect(() => {
     const store = loadStore();
-    if (!store.initialized || !store.assessmentDone) {
+    if (!store.initialized) {
       setNeedsOnboarding(true);
     }
     setReady(true);
@@ -65,12 +65,12 @@ export default function HomePage() {
         {/* 引导横幅 */}
         {needsOnboarding && (
           <Link
-            href="/onboarding/"
+            href="/games/feihua/"
             className="flex items-center justify-between rounded-2xl border-2 border-accent bg-accent-light px-6 py-4 text-accent hover:bg-red-50 transition-colors"
           >
             <div>
               <div className="font-semibold">欢迎来到风雨情！</div>
-              <div className="text-sm opacity-80">完成3轮测评，了解你的诗词基础</div>
+              <div className="text-sm opacity-80">建议先玩 3 轮飞花令，快速了解诗词积累</div>
             </div>
             <span className="text-2xl">→</span>
           </Link>
