@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export default function ShanShuiBackground() {
+  const imgRef = useRef<HTMLImageElement>(null);
+
   useEffect(() => {
     let mounted = true;
+    let objectUrl: string | undefined;
 
     async function init() {
       const seed = Date.now();
       const { PaintingGenerator } = await import("@jobinjia/shuimo-core");
       if (!mounted) return;
 
-      const W = window.innerWidth;
+      const W = 1440;
       const H = 900;
 
       const result = PaintingGenerator.landscape({
@@ -27,24 +30,41 @@ export default function ShanShuiBackground() {
       if (!mounted) return;
 
       const blob = new Blob([result.svg], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(blob);
+      objectUrl = URL.createObjectURL(blob);
 
-      // auto 80vh = 高度固定为视口80%，宽度等比缩放
-      // center bottom = 图片底部与容器底部对齐（山水画地平线贴底）
-      document.body.style.backgroundImage = `url("${url}")`;
-      document.body.style.backgroundRepeat = "no-repeat";
-      document.body.style.backgroundSize = "auto 80vh";
-      document.body.style.backgroundPosition = "center bottom";
-      document.body.style.backgroundAttachment = "fixed";
-      document.body.style.backgroundColor = "#f0ebe0";
+      if (imgRef.current) {
+        imgRef.current.src = objectUrl;
+      }
     }
 
     init();
 
     return () => {
       mounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, []);
 
-  return null;
+  return (
+    <img
+      ref={imgRef}
+      alt=""
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        // 画面从顶部往下 25% 处开始，向下延伸到底
+        top: "25%",
+        left: 0,
+        right: 0,
+        // 高度 = 75vh，这样底部刚好到达屏幕底部
+        height: "75vh",
+        width: "100%",
+        objectFit: "cover",
+        // 横向居中裁切
+        objectPosition: "center top",
+        zIndex: 0,
+        pointerEvents: "none",
+      }}
+    />
+  );
 }
