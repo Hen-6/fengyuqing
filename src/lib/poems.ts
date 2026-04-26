@@ -168,30 +168,68 @@ export function verifyLineExists(rawLine: string): { found: boolean; poem: Poem 
   return { found: true, poem: poem ?? null, lineIndex: hit.lineIndex };
 }
 
-/** 查找相近诗词（当精确匹配失败时） */
-export function findSimilarLines(rawLine: string, maxResults = 5): { poem: Poem; lineIndex: number; cleanLine: string; distance: number }[] {
+/** 查找相近诗词（当精确匹配失败时）
+ *
+ *  策略：
+ *  1. 子串匹配：查询句子是否为库中任意句的子串（允许中间有标点差异）
+ *  2. 子串反向：库中句子是否为查询句的子串
+ *  3. 宽阈值编辑距离：允许 5 言 ±3 字 / 7 言 ±3 字 / 长句 ±4 字 差异
+ */
+export function findSimilarLines(rawLine: string, maxResults = 8): { poem: Poem; lineIndex: number; cleanLine: string; distance: number }[] {
   const clean = stripPunctuation(rawLine);
-  if (!clean) return [];
+  if (!clean || clean.length < 4) return [];
 
   const results: { poem: Poem; lineIndex: number; cleanLine: string; distance: number }[] = [];
   const len = clean.length;
-  const minLen = Math.max(2, len - 3);
-  const maxLen = len + 3;
 
   for (const poem of POEMS) {
     for (let i = 0; i < poem.cleanLines.length; i++) {
       const cl = poem.cleanLines[i];
-      if (cl.length < minLen || cl.length > maxLen) continue;
-      const dist = levenshtein(clean, cl);
-      if (dist <= Math.max(2, Math.ceil(len * 0.3))) {
-        results.push({ poem, lineIndex: i, cleanLine: cl, distance: dist });
+
+      // 1. 精确匹配（理论上上面已处理，双保险）
+      if (cl === clean) {
+        results.push({ poem, lineIndex: i, cleanLine: cl, distance: 0 });
+        continue;
+      }
+
+      const clen = cl.length;
+
+      // 2. 子串匹配（处理标点分割导致的不完整输入）
+      // 用户输入是库中句的子串，或库中句是用户输入的子串
+      if (len >= 4 && clen >= 4) {
+        const isSubstr = cl.includes(clean) || clean.includes(cl);
+        if (isSubstr) {
+          const dist = Math.abs(len - clen);
+          results.push({ poem, lineIndex: i, cleanLine: cl, distance: dist });
+          continue;
+        }
+      }
+
+      // 3. 宽阈值编辑距离
+      // 五言：允许±3，七言：允许±3，长句：允许±4
+      const maxLenDiff = Math.max(len, clen) <= 7 ? 3 : 4;
+      const maxDist = Math.max(maxLenDiff, 2);
+      if (Math.abs(len - clen) <= maxLenDiff) {
+        const dist = levenshtein(clean, cl);
+        if (dist <= maxDist) {
+          results.push({ poem, lineIndex: i, cleanLine: cl, distance: dist });
+        }
       }
     }
   }
 
-  // 按编辑距离升序，取前 maxResults
-  results.sort((a, b) => a.distance - b.distance);
-  return results.slice(0, maxResults);
+  // 去重（同诗同句只保留一条），按编辑距离升序
+  const seen = new Set<string>();
+  const deduped: typeof results = [];
+  for (const r of results) {
+    const key = `${r.poem.id}:${r.lineIndex}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(r);
+    }
+  }
+  deduped.sort((a, b) => a.distance - b.distance);
+  return deduped.slice(0, maxResults);
 }
 
 /** 获取今日推荐诗（按 rank 顺延） */
