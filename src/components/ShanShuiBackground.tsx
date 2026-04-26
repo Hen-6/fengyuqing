@@ -7,14 +7,11 @@ export default function ShanShuiBackground() {
     let mounted = true;
 
     async function init() {
-      // 每次刷新用新 seed 生成不同构图
       const seed = Date.now();
-
       const { PaintingGenerator } = await import("@jobinjia/shuimo-core");
-
       if (!mounted) return;
 
-      const W = 1440;
+      const W = window.innerWidth;
       const H = 900;
 
       const result = PaintingGenerator.landscape({
@@ -32,10 +29,11 @@ export default function ShanShuiBackground() {
       const blob = new Blob([result.svg], { type: "image/svg+xml" });
       const url = URL.createObjectURL(blob);
 
-      // 底部对齐，纵向 cover（天空可能被裁），山水主体始终贴底
+      // auto 80vh = 高度固定为视口80%，宽度等比缩放
+      // center bottom = 图片底部与容器底部对齐（山水画地平线贴底）
       document.body.style.backgroundImage = `url("${url}")`;
       document.body.style.backgroundRepeat = "no-repeat";
-      document.body.style.backgroundSize = "cover";
+      document.body.style.backgroundSize = "auto 80vh";
       document.body.style.backgroundPosition = "center bottom";
       document.body.style.backgroundAttachment = "fixed";
       document.body.style.backgroundColor = "#f0ebe0";
