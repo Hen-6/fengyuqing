@@ -44,26 +44,13 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="min-h-screen paper-texture">
+    <div className="glass-panel">
       {/* 顶部标题 */}
       <div className="pt-10 pb-4 text-center">
-        {/* 装饰性引号 */}
-        <div className="flex justify-center mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-12 h-px bg-gradient-to-r from-transparent to-border" />
-            <span className="text-accent/40 text-2xl">❧</span>
-            <div className="w-12 h-px bg-gradient-to-l from-transparent to-border" />
-          </div>
-        </div>
-        <div className="inline-flex items-center gap-3">
-          <span className="text-accent/50 text-lg">☘</span>
-          <h1 className="text-5xl font-bold tracking-wide text-ink brush-title">
-            风雨情
-          </h1>
-          <span className="text-accent/50 text-lg">☘</span>
-        </div>
+        <h1 className="text-5xl font-bold tracking-wide text-ink brush-title">
+          风雨情
+        </h1>
         <p className="mt-1 text-sm text-text-muted tracking-widest">古诗词练习平台</p>
-        <div className="mt-4 mx-auto max-w-xs h-px bg-gradient-to-r from-transparent via-border to-transparent" />
       </div>
 
       <div className="mx-auto max-w-2xl px-6 pb-12 space-y-5">
@@ -92,11 +79,6 @@ export default function HomePage() {
         {/* 学习进度 */}
         <FamiliarityChart />
 
-        {/* 国风分隔线 */}
-        <div className="guofeng-divider">
-          <span className="text-accent/40 text-sm">✦</span>
-        </div>
-
         {/* 游戏入口 */}
         <section>
           <div className="title-decoration">
@@ -123,8 +105,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        <div className="ink-divider" />
-
         {/* 每日推荐 */}
         <Link
           href="/daily/"
@@ -150,8 +130,6 @@ export default function HomePage() {
           </div>
           <span className="ml-auto text-xl text-text-muted">›</span>
         </Link>
-
-        <div className="ink-divider" />
 
         {/* 数据管理 */}
         <section className="guofeng-card p-5">

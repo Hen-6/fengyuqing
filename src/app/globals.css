@@ -32,7 +32,18 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* === 国风基础样式 === */
+/* 毛玻璃内容面板 */
+.glass-panel {
+  min-height: 100vh;
+  padding-top: 2.5rem;
+  /* 背景 */
+  background: rgba(245, 240, 232, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 0;
+  /* 毛玻璃下保留宣纸纹理感 */
+  box-shadow: inset 0 0 80px rgba(200, 180, 140, 0.08);
+}
 
 * {
   box-sizing: border-box;
