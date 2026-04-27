@@ -11,6 +11,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            discord_bot/
+            data/
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -19,10 +23,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r discord-bot/requirements.txt
+          pip install -r discord_bot/requirements.txt
 
       - name: Run daily poem bot
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          POEMS_JSON_PATH: src/data/poems.json
         run: python -m discord_bot.daily
