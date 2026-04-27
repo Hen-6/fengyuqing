@@ -20,6 +20,15 @@ PROJECT_DIR = SCRIPT_DIR.parent
 DATA_DIR = PROJECT_DIR / "data"
 OUTPUT_FILE = DATA_DIR / "poems.json"
 POEMS1_URL = "https://raw.githubusercontent.com/yxcs/poems-db/master/poems1.json"
+POEMS2_URL = "https://raw.githubusercontent.com/yxcs/poems-db/master/poems2.json"
+POEMS3_URL = "https://raw.githubusercontent.com/yxcs/poems-db/master/poems3.json"
+POEMS4_URL = "https://raw.githubusercontent.com/yxcs/poems-db/master/poems4.json"
+ALL_POEMS_URLS = [
+    ("poems1.json", POEMS1_URL),
+    ("poems2.json", POEMS2_URL),
+    ("poems3.json", POEMS3_URL),
+    ("poems4.json", POEMS4_URL),
+]
 
 # ─── 工具函数 ───────────────────────────────────────────────────────────────
 
@@ -102,7 +111,29 @@ def load_seed_titles() -> tuple[set[str], list[str]]:
         try:
             items = json.loads(raw)
         except json.JSONDecodeError:
+            # fallback: split by newlines
             items = [l.strip() for l in raw.splitlines() if l.strip()]
+            # 二次处理：某行可能是被合并的 JSON 片段（如 "行路难","梁园吟"...）
+            expanded: list[str] = []
+            for item in items:
+                if not isinstance(item, str):
+                    expanded.append(item)
+                    continue
+                # 如果该行看起来像 JSON 数组片段（有多个引号包裹的字符串），尝试解析
+                stripped = item.strip()
+                if re.match(r'^"[^"]+"(,\s*"[^"]+")+,?$', stripped):
+                    try:
+                        # 去掉尾部逗号（Python json.loads 不支持 trailing comma）
+                        cleaned = stripped.rstrip(",")
+                        parsed = json.loads("[" + cleaned + "]")
+                        for p in parsed:
+                            if isinstance(p, str) and p.strip():
+                                expanded.append(p.strip())
+                        continue
+                    except Exception:
+                        pass
+                expanded.append(item)
+            items = expanded
 
         for item in items:
             title = ""
@@ -122,13 +153,48 @@ def load_seed_titles() -> tuple[set[str], list[str]]:
 # ─── 标题匹配 ────────────────────────────────────────────────────────────────
 
 def match_title(seed_norm: str, title: str) -> bool:
-    """宽松匹配：包含关系 或 前两字相同"""
+    """
+    宽松匹配：
+      1. 标准化精确匹配
+      2. 去除序号词（其一/其二/其三/三首等）后的词干匹配
+         解决 "清平调三首" 应匹配 "清平调其一/其二" 的问题
+      3. 前两字相同（兜底宽松匹配）
+    """
     title_norm = normalize(title)
     if not seed_norm or not title_norm:
         return False
+
+    # 1. 标准化包含匹配
     if seed_norm in title_norm or title_norm in seed_norm:
         return True
-    # 前两字匹配
+
+    # 2. 去除序号词后再匹配
+    # 将 seed 和 title 都去掉 "其一/其二/其三/三首" 等序号后缀
+    def strip_suffix(s: str) -> str:
+        """去除常见序号词后缀，保留词干"""
+        # 按长度降序排列，避免"三首"先匹配导致"词三首"无法匹配
+        suffix_order = sorted(
+            ["其一", "其二", "其三", "其四", "其五", "其六", "其七",
+             "词三首", "词二首", "词一首", "三首", "二首", "一首"],
+            key=len, reverse=True
+        )
+        for suffix in suffix_order:
+            if s.endswith(suffix):
+                s = s[:-len(suffix)]
+        return s
+
+    seed_stripped = strip_suffix(seed_norm)
+    title_stripped = strip_suffix(title_norm)
+
+    # 如果去掉序号后能互相包含，说明是同一首诗的不同编号
+    if seed_stripped and title_stripped:
+        if seed_stripped in title_stripped or title_stripped in seed_stripped:
+            return True
+        # 如果词干相同（长度 ≥ 4），也匹配
+        if len(seed_stripped) >= 4 and seed_stripped == title_stripped:
+            return True
+
+    # 3. 前两字相同（兜底）
     if len(seed_norm) >= 2 and len(title_norm) >= 2 and seed_norm[:2] == title_norm[:2]:
         return True
     return False
@@ -146,7 +212,7 @@ KNOWN_CI_TYPES = {
     "庆清朝", "长亭怨慢", "暗香", "疏影", "绿头鸭", "西平乐", "归朝欢",
     "永遇乐", "望海潮", "长相思", "点绛唇", "生查子", "诉衷情", "谒金门",
     "好事近", "谒金门", "天仙子", "更漏子", "酒泉子", "采莲令", "河满子",
-    "清平调", "清平乐", "女冠子", "更漏子", "归国谣", "菩萨蛮", "玉蝴蝶",
+    "清平乐", "女冠子", "更漏子", "归国谣", "菩萨蛮", "玉蝴蝶",
     "八六子", "扑蝴蝶", "秋霁", "夜合花", "大有", "水调歌", "探春令",
     "传言玉女", "花心动", "垂丝钓", "金人捧露盘", "金盏子", "龙山会",
     "蓦山溪", "千秋岁", "归田乐", "清平乐令", "应天长", "渔父", "张中令",
@@ -166,7 +232,7 @@ def infer_type(name: str, clean_lines: list[str]) -> str:
     # 检查是否含词牌关键字
     ci_cands = ["沁园春","水调歌头","满江红","念奴娇","水龙吟","永遇乐","望海潮",
                 "贺新郎","摸鱼儿","扬州慢","采桑子","卜算子","渔家傲","清平乐",
-                "菩萨蛮","西江月","如梦令","蝶恋花","鹊桥仙","临江仙","虞美人",
+                "清平调","菩萨蛮","西江月","如梦令","蝶恋花","鹊桥仙","临江仙","虞美人",
                 "木兰花","踏莎行","雨霖铃","声声慢","一剪梅","鹧鸪天","南乡子",
                 "定风波","少年游","六州歌头","长相思","点绛唇","生查子","诉衷情",
                 "好事近","天仙子","蓦山溪","千秋岁","天净沙","青玉案","千秋岁引",
@@ -217,24 +283,19 @@ def infer_type(name: str, clean_lines: list[str]) -> str:
     else:
         return "其他"
 
-# ─── 处理 yxcs poems1.json ─────────────────────────────────────────────────
+# ─── 处理 yxcs poems NDJSON（支持 poems1-4.json） ─────────────────────────────
 
-def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
+def stream_poems_from_url(url: str, filename: str, seed_set: set[str], seed_rank: dict[str, int], matched: dict[str, dict]) -> int:
     """
-    流式下载并处理 poems1.json NDJSON，只保留匹配种子的诗歌。
+    从指定 URL 流式读取 NDJSON 文件，只保留匹配种子的诗歌。
+    返回扫描行数。
+    matched 是共享的 dict，由调用方管理（同名去重：保留第一个匹配/优先级高的）。
     """
     import urllib.request
-    # Build a norm→position lookup for O(1) access
-    seed_rank: dict[str, int] = {norm: i for i, norm in enumerate(seed_list)}
-
-    print(f"下载 {POEMS1_URL}（流式处理）...")
-    poems: list[dict] = []
-    matched: dict[str, dict] = {}  # norm → poem (保留优先级高的)
     total = 0
-
     try:
-        req = urllib.request.Request(POEMS1_URL, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=180) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=240) as resp:
             for line in resp:
                 total += 1
                 line_str = line.decode("utf-8").strip()
@@ -245,7 +306,7 @@ def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
                 except json.JSONDecodeError:
                     continue
 
-                name = obj.get("name", "")
+                name = obj.get("name") or obj.get("title", "")
                 if not name:
                     continue
 
@@ -262,30 +323,27 @@ def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
                 if not is_match:
                     continue
 
-                # 获取原始诗句（在同名词检查之后，清理之前）
-                raw_content: list = obj.get("content", [])
-
                 # 同名去重（保留第一个/优先级高的）
-                if name_norm in matched:
+                # 用 name_norm + author 做 key，避免同标题不同作者被误去重
+                author = obj.get("author", "") or "佚名"
+                dedup_key = f"{name_norm}:{author}"
+                if dedup_key in matched:
                     continue
 
-                # 先清理 HTML，再拆分句子（顺序很重要！）
-                # split_lines_preserve_punct: 保留标点 → lines
-                # split_lines: 无标点 → cleanLines
+                raw_content: list = obj.get("content", [])
+                if not raw_content:
+                    continue
+
+                # 先清理 HTML，再拆分句子
                 all_lines_raw: list[str] = []
-                all_lines_clean: list[str] = []
                 for item in raw_content:
                     cleaned = clean_html(str(item))
                     if not cleaned:
                         continue
                     raw_parts = split_lines_preserve_punct(cleaned)
-                    clean_parts = split_lines(cleaned)
                     for rp in raw_parts:
                         if rp and rp not in all_lines_raw:
                             all_lines_raw.append(rp)
-                    for cp in clean_parts:
-                        if cp and cp not in all_lines_clean:
-                            all_lines_clean.append(cp)
 
                 if not all_lines_raw:
                     continue
@@ -299,7 +357,6 @@ def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
                         lines.append(ln)
 
                 clean_lines = [punct_strip(ln) for ln in lines]
-                # 过滤掉 cleanLines 中全是非汉字的
                 valid = [(ln, cl) for ln, cl in zip(lines, clean_lines)
                          if len(cl) >= 4 and re.search(r"[\u4e00-\u9fff]", cl)]
                 if not valid:
@@ -308,7 +365,7 @@ def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
                 lines = list(lines)
                 clean_lines = list(clean_lines)
 
-                # 推断类型（用于过滤散曲）— 基于 clean_lines
+                # 推断类型（用于过滤散曲）
                 ptype = infer_type(name, clean_lines)
                 if ptype == "拒绝":
                     continue
@@ -336,18 +393,30 @@ def stream_poems1(seed_set: set[str], seed_list: list[str]) -> list[dict]:
                     "note": obj.get("note", ""),
                     "allChars": sorted(list(chars_set)),
                     "_rank": seed_rank.get(name_norm, 9999),
+                    "_dedup_key": dedup_key,
                 }
-                matched[name_norm] = poem
-
-                if len(poems) % 50 == 0:
-                    print(f"    已匹配 {len(poems)} 首（扫描 {total} 行）...")
+                matched[dedup_key] = poem
 
     except Exception as e:
-        print(f"  ⚠ 下载 poems1.json 失败: {e}")
-        return []
+        print(f"  ⚠ 下载 {filename} 失败: {e}")
+    return total
 
-    print(f"  poems1.json 扫描完成：匹配 {len(matched)} 首（扫描 {total} 行）")
-    # 按种子优先级排序
+
+def stream_poems_all(seed_set: set[str], seed_list: list[str]) -> list[dict]:
+    """
+    流式下载并处理 poems1-4.json NDJSON，只保留匹配种子的诗歌。
+    """
+    seed_rank: dict[str, int] = {norm: i for i, norm in enumerate(seed_list)}
+    matched: dict[str, dict] = {}
+
+    grand_total = 0
+    for filename, url in ALL_POEMS_URLS:
+        print(f"\n下载 {filename}（流式处理）...")
+        total = stream_poems_from_url(url, filename, seed_set, seed_rank, matched)
+        print(f"  {filename} 扫描完成：共 {total} 行，已匹配 {len(matched)} 首")
+        grand_total += total
+
+    print(f"\n总计扫描 {grand_total} 行，匹配 {len(matched)} 首诗歌")
     sorted_poems = sorted(matched.values(), key=lambda p: p["_rank"])
     return sorted_poems
 
@@ -362,8 +431,8 @@ def main():
     seed_set, seed_list = load_seed_titles()
     print(f"\n✅ 种子标题：{len(seed_set)} 个（唐诗三百首 + 教育部必背）")
 
-    # 2. 流式读取 yxcs poems1.json
-    poems = stream_poems1(seed_set, seed_list)
+    # 2. 流式读取 yxcs poems1-4.json（全部四个文件）
+    poems = stream_poems_all(seed_set, seed_list)
     print(f"\n✅ 匹配诗歌：{len(poems)} 首")
 
     # 3. 更新 rank，清理内部字段

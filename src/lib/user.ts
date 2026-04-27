@@ -3,7 +3,7 @@
  */
 
 import { PoemProgress, createInitialProgress, updateProgress, upgradeToLevel } from "./srs";
-import { getAllPoems } from "./poems";
+import { getRankList } from "./poems";
 
 const STORE_KEY = "fengyuqing_v1";
 
@@ -95,10 +95,11 @@ export function setLevel(store: UserStore, poemId: string, level: number): void 
 
 /** 初始化所有诗为 level 1（引导结束后调用） */
 export function initializeAllPoems(store: UserStore): void {
-  const poems = getAllPoems();
+  const poems = getRankList();
   for (const poem of poems) {
-    if (!store.poems[poem.id]) {
-      store.poems[poem.id] = createInitialProgress(poem.id);
+    const id = `${poem.t}:${poem.a}`;
+    if (!store.poems[id]) {
+      store.poems[id] = createInitialProgress(id);
     }
   }
   store.initialized = true;
@@ -111,7 +112,7 @@ export function advanceDailyRank(store: UserStore): number {
   if (store.lastDailyDate === today) {
     return store.currentRank; // 今天已经推送过了
   }
-  const poems = getAllPoems();
+  const poems = getRankList();
   store.currentRank = (store.currentRank % poems.length) + 1;
   store.lastDailyDate = today;
   saveStore(store);
@@ -143,11 +144,12 @@ export function getOverview(store: UserStore): {
   level5: number;
   dueToday: number;
 } {
-  const poems = getAllPoems();
+  const poems = getRankList();
   const today = new Date().toISOString().split("T")[0];
   let level3plus = 0, level5 = 0, dueToday = 0;
   for (const poem of poems) {
-    const p = store.poems[poem.id] ?? createInitialProgress(poem.id);
+    const id = `${poem.t}:${poem.a}`;
+    const p = store.poems[id] ?? createInitialProgress(id);
     if (p.level >= 3) level3plus++;
     if (p.level === 5) level5++;
     if (p.nextReview <= today) dueToday++;

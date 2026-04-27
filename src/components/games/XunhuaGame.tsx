@@ -1,18 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import {
-  getAllCouplets,
-  getCoupletsByCount,
-  getPoemById,
-  stripPunctuation,
-  findSimilarLines,
-  Poem,
-  CoupletEntry,
-} from "@/lib/poems";
-import { loadStore, recordResult } from "@/lib/user";
-import { PoemCard } from "@/components/ui/PoemCard";
+import { useState, useCallback } from "react";
+import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { VoiceInput } from "@/components/ui/VoiceInput";
+import { OnlinePoemResult, searchOnline } from "@/lib/onlineSearch";
+import { stripPunctuation } from "@/lib/poems";
+import { loadStore, markPoemAnswered } from "@/lib/user";
 
 const MAX_SCORE = 200;
 type CharState = "empty" | "correct" | "present" | "absent";
@@ -21,28 +14,25 @@ interface Guess {
   chars: string[];
   states: CharState[];
   display: string;
-  poem: Poem | null;
-  lineIndex: number;
+  poem: OnlinePoemResult | null;
+  matchedLineIndex: number;
 }
 
-function buildHintPool(answer: string): string[] {
-  const couplets = getAllCouplets();
-  const charSet = new Set<string>();
-  for (const c of couplets) {
-    for (const ch of c.cleanPair) {
-      if (ch.trim()) charSet.add(ch);
-    }
-  }
-  const pool: string[] = Array.from(charSet);
+function buildHintPool(): string[] {
+  // 从预设高频字构建 100 字提示池
+  const pool: string[] = [];
+  const common =
+    "的一是了我不在人有他这中大来上个国们" +
+    "月花春秋风雨水云雪夜星河思乡酒剑马日天鸟草草木叶声光心" +
+    "山河天地风月雨雪花春秋云夜星江海湖日阳光烟波声人心思情";
+  for (const c of common) pool.push(c);
+  while (pool.length < 100) pool.push("　");
+  // 洗牌
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  const answerChars = answer.split("");
-  const extra = answerChars.filter((c) => !pool.includes(c));
-  const full = [...pool.slice(0, 90), ...extra, ...pool.slice(90)];
-  while (full.length < 100) full.push("　");
-  return full.slice(0, 100);
+  return pool.slice(0, 100);
 }
 
 function computeStates(guess: string, answer: string): CharState[] {
@@ -71,42 +61,32 @@ function calcScore(guessCount: number): number {
 }
 
 export function XunhuaGame() {
-  const [phase, setPhase] = useState<"playing" | "won">("playing");
-  const [target, setTarget] = useState<CoupletEntry | null>(null);
+  const [phase, setPhase] = useState<"loading" | "playing" | "won">("loading");
+  const [target, setTarget] = useState<OnlinePoemResult | null>(null);
   const [answer, setAnswer] = useState<string>("");
   const [hintPool, setHintPool] = useState<string[]>([]);
   const [hintStates, setHintStates] = useState<CharState[]>([]);
   const [guess, setGuess] = useState<string>("");
   const [guesses, setGuesses] = useState<Guess[]>([]);
-  const [guessesLeft] = useState(Infinity);
   const [score, setScore] = useState(MAX_SCORE);
   const [showCard, setShowCard] = useState(false);
-  const [cardPoem, setCardPoem] = useState<Poem | null>(null);
+  const [cardPoem, setCardPoem] = useState<OnlinePoemResult | null>(null);
   const [showConfirm, setShowConfirm] = useState<{
     type: "oneOff" | "reorder";
     guess: string;
     actual: string;
-    poem: Poem;
-    lineIndex: number;
+    poem: OnlinePoemResult;
+    matchedLineIndex: number;
   } | null>(null);
-  const [similarPoems, setSimilarPoems] = useState<
-    { poem: Poem; lineIndex: number; cleanLine: string; distance: number }[]
-  >([]);
+  const [similarPoems, setSimilarPoems] = useState<OnlinePoemResult[]>([]);
   const [guessError, setGuessError] = useState<string | null>(null);
+  const [loadingHint, setLoadingHint] = useState<string | null>(null);
 
   const store = loadStore();
 
-  const pickNewPuzzle = useCallback(() => {
-    const pool5 = getCoupletsByCount(5);
-    const pool7 = getCoupletsByCount(7);
-    const pool = pool5.length > 0 ? pool5 : pool7;
-    if (pool.length === 0) return;
-    const couplet = pool[Math.floor(Math.random() * pool.length)];
-    const answerStr = couplet.cleanPair;
-    setTarget(couplet);
-    setAnswer(answerStr);
-    setHintPool(buildHintPool(answerStr));
-    setHintStates(Array(100).fill("empty"));
+  /** 加载一道新题 */
+  const loadNewPuzzle = useCallback(async () => {
+    setPhase("loading");
     setGuess("");
     setGuesses([]);
     setScore(MAX_SCORE);
@@ -115,31 +95,54 @@ export function XunhuaGame() {
     setCardPoem(null);
     setSimilarPoems([]);
     setGuessError(null);
+    setShowConfirm(null);
+
+    // 在线搜索，随机找一首五言或七言诗
+    const chars = ["花", "月", "春", "风", "雨", "山", "水", "云", "夜", "江"];
+    const startChar = chars[Math.floor(Math.random() * chars.length)];
+    const hits = await searchOnline(startChar, 30);
+
+    if (hits.length === 0) {
+      setGuessError("无法加载题目，请检查网络");
+      return;
+    }
+
+    // 随机挑一首
+    const pick = hits[Math.floor(Math.random() * hits.length)];
+    const poem = pick.poem;
+    const lines = poem.content
+      .map((l) => stripPunctuation(l).trim())
+      .filter((l) => l.length >= 4);
+
+    // 随机选一句（仅5言或7言）
+    const validLines = lines.filter((l) => l.length === 5 || l.length === 7);
+    const pool = validLines.length > 0 ? validLines : lines;
+    if (pool.length === 0) {
+      loadNewPuzzle(); // 递归重试
+      return;
+    }
+
+    const answerLine = pool[Math.floor(Math.random() * pool.length)];
+    setTarget(poem);
+    setAnswer(answerLine);
+    setHintPool(buildHintPool());
+    setHintStates(Array(100).fill("empty"));
   }, []);
 
-  useEffect(() => {
-    pickNewPuzzle();
-  }, [pickNewPuzzle]);
-
-  function doRevealChars(input: string, currentHintStates: CharState[], currentHintPool: string[], currentAnswer: string) {
-    const newHintStates = [...currentHintStates];
-    for (let i = 0; i < input.length; i++) {
-      for (let j = 0; j < currentHintPool.length; j++) {
-        if (currentHintPool[j] === input[i] && newHintStates[j] === "empty") {
-          newHintStates[j] = input[i] === currentAnswer[i] ? "correct" : "absent";
-          break;
-        }
-      }
-    }
-    setHintStates(newHintStates);
+  // 初始加载
+  useState(() => {
+    loadNewPuzzle();
+  });
+  // 每次 phase === "loading" 触发加载
+  if (phase === "loading") {
+    loadNewPuzzle();
   }
 
-  const handleGuessSubmit = useCallback(() => {
+  const handleGuessSubmit = useCallback(async () => {
     if (!guess.trim() || phase !== "playing") return;
     setGuessError(null);
-    setSimilarPoems([]);
 
-    const trimmed = stripPunctuation(guess);
+    const trimmed = stripPunctuation(guess).trim();
     if (trimmed.length === 0) {
       setGuessError("请输入诗句");
       return;
@@ -148,88 +151,109 @@ export function XunhuaGame() {
     // 精确匹配
     if (trimmed === answer) {
       const states = computeStates(trimmed, answer);
-      const poem = target ? getPoemById(target.poemId) ?? null : null;
+      const matchedIdx = target ? target.content.findIndex(
+        (l) => stripPunctuation(l).trim() === trimmed
+      ) : 0;
       const newGuess: Guess = {
         chars: trimmed.split(""),
         states,
         display: trimmed,
-        poem,
-        lineIndex: target?.lineIndex ?? 0,
+        poem: target,
+        matchedLineIndex: matchedIdx >= 0 ? matchedIdx : 0,
       };
       setGuesses((g) => [...g, newGuess]);
-      doRevealChars(trimmed, hintStates, hintPool, answer);
+      revealHintChars(trimmed);
       const finalScore = calcScore(guesses.length + 1);
       setScore(finalScore);
       setPhase("won");
-      if (poem) recordResult(store, poem.id, "correct");
+      if (target) {
+        markPoemAnswered(store, target._id || `${target.name}:${target.author}`);
+      }
       setGuess("");
       return;
     }
 
     // 一字之差检测
-    let diff = 0, diffIdx = -1;
+    let diff = 0;
     for (let i = 0; i < trimmed.length && i < answer.length; i++) {
-      if (trimmed[i] !== answer[i]) { diff++; diffIdx = i; }
+      if (trimmed[i] !== answer[i]) diff++;
     }
-    if (diff === 1 && trimmed.length === answer.length) {
-      const { found, poem } = verifyGuessInDb(trimmed);
-      if (found && poem) {
-        setShowConfirm({ type: "oneOff", guess: trimmed, actual: answer, poem, lineIndex: target?.lineIndex ?? 0 });
+
+    if (diff === 1 && trimmed.length === answer.length && target) {
+      // 验证用户输入是否在库中
+      setLoadingHint("验证中…");
+      const hits = await searchOnline(trimmed, 1);
+      setLoadingHint(null);
+      if (hits.length > 0) {
+        const hit = hits[0];
+        const matchedIdx = hit.poem.content.findIndex(
+          (l) => stripPunctuation(l).trim() === trimmed
+        );
+        setShowConfirm({
+          type: "oneOff",
+          guess: trimmed,
+          actual: answer,
+          poem: hit.poem,
+          matchedLineIndex: matchedIdx >= 0 ? matchedIdx : 0,
+        });
         return;
       }
     }
 
-    // 字符相同但顺序不同
-    if (trimmed.length === answer.length) {
-      const sortedGuess = [...trimmed].sort().join("");
-      const sortedAnswer = [...answer].sort().join("");
-      if (sortedGuess === sortedAnswer) {
-        const { found, poem } = verifyGuessInDb(trimmed);
-        if (found && poem) {
-          setShowConfirm({ type: "reorder", guess: trimmed, actual: answer, poem, lineIndex: target?.lineIndex ?? 0 });
-          return;
+    // 都不符合 → 显示猜测 + 相近诗词
+    const states = computeStates(trimmed, answer);
+    const newGuess: Guess = {
+      chars: trimmed.split(""),
+      states,
+      display: trimmed,
+      poem: null,
+      matchedLineIndex: -1,
+    };
+    setGuesses((g) => [...g, newGuess]);
+    revealHintChars(trimmed);
+
+    // 在线搜索相近诗句
+    setLoadingHint("搜索中…");
+    const hits = await searchOnline(trimmed, 5);
+    setLoadingHint(null);
+    setSimilarPoems(hits.map((h) => h.poem));
+    setGuessError("诗句不在答案中");
+    setGuess("");
+  }, [guess, answer, phase, target, store, guesses]);
+
+  function revealHintChars(input: string) {
+    const newStates = [...hintStates];
+    for (let i = 0; i < input.length; i++) {
+      for (let j = 0; j < hintPool.length; j++) {
+        if (hintPool[j] === input[i] && newStates[j] === "empty") {
+          newStates[j] = input[i] === answer[i] ? "correct" : "absent";
+          break;
         }
       }
     }
-
-    // 都不符合 → 记录错误 + 显示相近诗词
-    const states = computeStates(trimmed, answer);
-    const poem = target ? getPoemById(target.poemId) ?? null : null;
-    const newGuess: Guess = { chars: trimmed.split(""), states, display: trimmed, poem, lineIndex: target?.lineIndex ?? 0 };
-    setGuesses((g) => [...g, newGuess]);
-    doRevealChars(trimmed, hintStates, hintPool, answer);
-    const similar = findSimilarLines(guess);
-    setSimilarPoems(similar);
-    setGuessError("诗句不在库中");
-    setGuess("");
-  }, [guess, answer, phase, target, store, guesses, hintStates, hintPool]);
-
-  function verifyGuessInDb(line: string): { found: boolean; poem: Poem | null; lineIndex: number } {
-    const couplets = getAllCouplets();
-    const clean = stripPunctuation(line);
-    for (const c of couplets) {
-      if (c.cleanPair === clean) {
-        const poem = getPoemById(c.poemId);
-        return { found: true, poem: poem ?? null, lineIndex: c.lineIndex };
-      }
-    }
-    return { found: false, poem: null, lineIndex: -1 };
+    setHintStates(newStates);
   }
 
   const confirmOffByOne = useCallback(() => {
     if (!showConfirm) return;
-    const { actual, poem, lineIndex } = showConfirm;
+    const { actual, poem, matchedLineIndex } = showConfirm;
     const states = computeStates(actual, actual);
-    const newGuess: Guess = { chars: actual.split(""), states, display: actual, poem, lineIndex };
+    const newGuess: Guess = {
+      chars: actual.split(""),
+      states,
+      display: actual,
+      poem,
+      matchedLineIndex,
+    };
     setGuesses((g) => [...g, newGuess]);
-    doRevealChars(actual, hintStates, hintPool, answer);
+    revealHintChars(actual);
     const finalScore = calcScore(guesses.length + 1);
     setScore(finalScore);
     setPhase("won");
-    if (poem) recordResult(store, poem.id, "correct");
+    if (poem) markPoemAnswered(store, poem._id || `${poem.name}:${poem.author}`);
     setGuess("");
     setShowConfirm(null);
-  }, [showConfirm, hintStates, hintPool, guesses, store, answer]);
+  }, [showConfirm, guesses, store]);
 
   const hintBgClass = (state: CharState) => {
     switch (state) {
@@ -251,165 +275,186 @@ export function XunhuaGame() {
 
   return (
     <div className="space-y-5">
-      {/* ===== 100字提示格 ===== */}
-      <div>
-        <div className="mb-2 text-xs text-text-muted text-center">
-          提示：点击提示字可查看包含该字的诗句
+      {phase === "loading" && (
+        <div className="text-center py-8 text-text-muted animate-pulse">
+          在线加载题目中…
         </div>
-        <div className="grid grid-cols-10 gap-1">
-          {hintPool.map((char, i) => (
-            <button
-              key={i}
-              onClick={() => char.trim() && char !== "　" && revealHintChar(char)}
-              disabled={!char.trim() || char === "　" || hintStates[i] !== "empty"}
-              className={`
-                flex h-8 w-8 items-center justify-center rounded text-sm font-bold
-                transition-all duration-200
-                ${hintBgClass(hintStates[i])}
-                ${hintStates[i] === "empty" && char.trim() && char !== "　"
-                  ? "cursor-pointer hover:brightness-90"
-                  : "cursor-default"
-                }
-              `}
-              title={char.trim() && char !== "　" ? `含「${char}」的诗句` : ""}
-            >
-              {hintStates[i] !== "empty" ? char : ""}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
-      {/* ===== 猜测历史 ===== */}
-      {guesses.length > 0 && (
-        <div>
-          <div className="mb-2 text-xs text-text-muted">猜测历史</div>
-          <div className="space-y-1">
-            {guesses.map((g, gi) => (
-              <div key={gi} className="flex gap-1">
-                {g.chars.map((ch, ci) => (
+      {phase !== "loading" && (
+        <>
+          {/* ===== 100字提示格 ===== */}
+          <div>
+            <div className="mb-2 text-xs text-text-muted text-center">
+              提示：点击提示字可查看包含该字的诗句
+            </div>
+            <div className="grid grid-cols-10 gap-1">
+              {hintPool.map((char, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    if (char.trim() && char !== "　" && hintStates[i] === "empty") {
+                      revealHintChars(char);
+                    }
+                  }}
+                  disabled={!char.trim() || char === "　" || hintStates[i] !== "empty"}
+                  className={`
+                    flex h-8 w-8 items-center justify-center rounded text-sm font-bold
+                    transition-all duration-200
+                    ${hintBgClass(hintStates[i])}
+                    ${hintStates[i] === "empty" && char.trim() && char !== "　"
+                      ? "cursor-pointer hover:brightness-90"
+                      : "cursor-default"
+                    }
+                  `}
+                >
+                  {hintStates[i] !== "empty" ? char : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ===== 猜测历史 ===== */}
+          {guesses.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs text-text-muted">猜测历史</div>
+              <div className="space-y-1">
+                {guesses.map((g, gi) => (
+                  <div key={gi} className="flex gap-1">
+                    {g.chars.map((ch, ci) => (
+                      <button
+                        key={ci}
+                        onClick={() => g.poem && (setCardPoem(g.poem), setShowCard(true))}
+                        className={`
+                          flex h-9 w-9 items-center justify-center rounded text-sm font-bold
+                          transition-all ${stateBgClass(g.states[ci])}
+                          ${g.poem ? "cursor-pointer hover:brightness-110" : ""}
+                        `}
+                        title={g.poem ? `查看《${g.poem.name}》` : ""}
+                      >
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ===== 相近诗词列表 ===== */}
+          {similarPoems.length > 0 && (
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <p className="mb-2 text-xs text-text-muted text-center">最相近的诗句：</p>
+              <div className="space-y-2">
+                {similarPoems.map((item, idx) => (
                   <button
-                    key={ci}
-                    onClick={() => g.poem && (setCardPoem(g.poem), setShowCard(true))}
-                    className={`
-                      flex h-9 w-9 items-center justify-center rounded text-sm font-bold
-                      transition-all ${stateBgClass(g.states[ci])}
-                      ${g.poem ? "cursor-pointer hover:brightness-110" : ""}
-                    `}
-                    title={g.poem ? `查看《${g.poem.title}》` : ""}
+                    key={idx}
+                    onClick={() => {
+                      const clean = stripPunctuation(item.content[item.matchedLineIndex] || "").trim();
+                      setGuess(clean);
+                      setSimilarPoems([]);
+                      setGuessError(null);
+                    }}
+                    className="w-full text-left rounded-lg border border-border px-3 py-2 hover:border-accent hover:bg-accent-light transition-colors"
                   >
-                    {ch}
+                    <div className="text-sm text-ink">
+                      {item.content[item.matchedLineIndex] || item.matchedLine}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      《{item.name}》— {item.author}
+                    </div>
                   </button>
                 ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* ===== 相近诗词列表 ===== */}
-      {similarPoems.length > 0 && (
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-2 text-xs text-text-muted text-center">最相近的诗句：</p>
-          <div className="space-y-2">
-            {similarPoems.map((item, idx) => (
+          {/* ===== 得分 + 输入框 ===== */}
+          <div>
+            <div className="mb-3 flex justify-between text-sm text-text-muted">
+              <span>无次数限制</span>
+              <span>得分 {score}</span>
+            </div>
+
+            {phase === "playing" && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={guess}
+                  onChange={(e) => { setGuess(e.target.value); setGuessError(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleGuessSubmit()}
+                  placeholder="输入诗句"
+                  className="input-chinese flex-1 text-center"
+                />
+                <VoiceInput onResult={(text) => setGuess(text)} />
+                <button onClick={handleGuessSubmit} className="btn-primary whitespace-nowrap px-4">
+                  猜
+                </button>
+              </div>
+            )}
+
+            {guessError && (
+              <p className="mt-2 text-center text-sm text-[var(--accent)]">{guessError}</p>
+            )}
+
+            {loadingHint && (
+              <p className="mt-2 text-center text-sm text-text-muted animate-pulse">
+                {loadingHint}
+              </p>
+            )}
+          </div>
+
+          {/* ===== 确认弹窗 ===== */}
+          {showConfirm && (
+            <div className="rounded-xl border-2 border-accent bg-surface p-4 text-center">
+              <p className="mb-2 text-sm text-text-muted">
+                {showConfirm.type === "oneOff" ? "与库内版本仅一字不同" : "字符相同但顺序不同"}
+              </p>
+              <p className="mb-1 text-lg font-bold text-ink">「{showConfirm.guess}」</p>
+              <p className="mb-3 text-xs text-text-muted">库内版本：{showConfirm.actual}</p>
+              <div className="flex justify-center gap-3">
+                <button onClick={confirmOffByOne} className="rounded-lg bg-accent px-4 py-2 text-white font-semibold">
+                  提交库内版本
+                </button>
+                <button onClick={() => { setGuess(""); setShowConfirm(null); }} className="rounded-lg border border-border px-4 py-2 text-text-muted">
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ===== 结束状态 ===== */}
+          {phase === "won" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border-2 border-accent bg-surface p-6 text-center">
+                <p className="text-2xl font-bold text-ink">正确！得分 {score}</p>
+                <p className="mt-2 text-lg text-text-muted">答案：{answer}</p>
+                {target && (
+                  <button
+                    onClick={() => { setCardPoem(target); setShowCard(true); }}
+                    className="mt-3 text-sm text-accent hover:underline"
+                  >
+                    查看完整诗词
+                  </button>
+                )}
+              </div>
               <button
-                key={idx}
-                onClick={() => {
-                  setGuess(item.cleanLine);
-                  setSimilarPoems([]);
-                  setGuessError(null);
-                }}
-                className="w-full text-left rounded-lg border border-border px-3 py-2 hover:border-accent hover:bg-accent-light transition-colors"
+                onClick={loadNewPuzzle}
+                className="w-full rounded-xl bg-accent py-3 font-semibold text-white hover:bg-red-700 transition"
               >
-                <div className="text-sm text-ink">{item.cleanLine}</div>
-                <div className="text-xs text-text-muted">
-                  《{item.poem.title}》— {item.poem.author}（差异 {item.distance} 字）
-                </div>
+                再来一局
               </button>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* ===== 得分 + 输入框 ===== */}
-      <div>
-        <div className="mb-3 flex justify-between text-sm text-text-muted">
-          <span>无次数限制</span>
-          <span>得分 {score}</span>
-        </div>
-
-        {phase === "playing" && (
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={guess}
-              onChange={(e) => { setGuess(e.target.value); setGuessError(null); }}
-              onKeyDown={(e) => e.key === "Enter" && handleGuessSubmit()}
-              placeholder="输入诗句"
-              className="input-chinese flex-1 text-center"
-            />
-            <VoiceInput onResult={(text) => setGuess(text)} />
-            <button onClick={handleGuessSubmit} className="btn-primary whitespace-nowrap px-4">
-              猜
-            </button>
-          </div>
-        )}
-
-        {guessError && (
-          <p className="mt-2 text-center text-sm text-[var(--accent)]">{guessError}</p>
-        )}
-      </div>
-
-      {/* ===== 确认弹窗 ===== */}
-      {showConfirm && (
-        <div className="rounded-xl border-2 border-accent bg-surface p-4 text-center">
-          <p className="mb-2 text-sm text-text-muted">
-            {showConfirm.type === "oneOff" ? "与库内版本仅一字不同" : "字符相同但顺序不同"}
-          </p>
-          <p className="mb-1 text-lg font-bold text-ink">「{showConfirm.guess}」</p>
-          <p className="mb-3 text-xs text-text-muted">库内版本：{showConfirm.actual}</p>
-          <div className="flex justify-center gap-3">
-            <button onClick={confirmOffByOne} className="rounded-lg bg-accent px-4 py-2 text-white font-semibold">
-              提交库内版本
-            </button>
-            <button onClick={() => { setGuess(""); setShowConfirm(null); }} className="rounded-lg border border-border px-4 py-2 text-text-muted">
-              取消
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 结束状态 ===== */}
-      {phase === "won" && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border-2 border-accent bg-surface p-6 text-center">
-            <p className="text-2xl font-bold text-ink">正确！得分 {score}</p>
-            <p className="mt-2 text-lg text-text-muted">答案：{answer}</p>
-          </div>
-          <button onClick={pickNewPuzzle} className="w-full rounded-xl bg-accent py-3 font-semibold text-white hover:bg-red-700 transition">
-            再来一局
-          </button>
-        </div>
-      )}
-
-      {/* ===== 诗词卡弹窗 ===== */}
-      {showCard && cardPoem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <PoemCard poem={cardPoem} onClose={() => setShowCard(false)} />
-        </div>
+          {/* ===== 诗词卡弹窗 ===== */}
+          {showCard && cardPoem && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <OnlinePoemCard result={cardPoem} onClose={() => setShowCard(false)} />
+            </div>
+          )}
+        </>
       )}
     </div>
   );
-
-  function revealHintChar(char: string) {
-    const newStates = [...hintStates];
-    let changed = false;
-    for (let i = 0; i < hintPool.length; i++) {
-      if (hintPool[i] === char && newStates[i] === "empty") {
-        newStates[i] = char === answer[i] ? "correct" : "absent";
-        changed = true;
-      }
-    }
-    if (changed) setHintStates(newStates);
-  }
 }

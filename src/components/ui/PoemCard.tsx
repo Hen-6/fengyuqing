@@ -1,16 +1,23 @@
 "use client";
 
-import { Poem } from "@/lib/poems";
+interface OnlinePoemResult {
+  _id: string;
+  name: string;
+  author: string;
+  dynasty: string;
+  content: string[];
+  note: string;
+  matchedLine?: string;
+  matchedLineIndex?: number;
+}
 
 interface PoemCardProps {
-  poem: Poem;
+  poem: OnlinePoemResult;
   onClose?: () => void;
   className?: string;
 }
 
 export function PoemCard({ poem, onClose, className = "" }: PoemCardProps) {
-  const displayLines = poem.lines ?? poem.cleanLines;
-
   return (
     <div
       className={`relative guofeng-card p-6 ${className}`}
@@ -29,21 +36,29 @@ export function PoemCard({ poem, onClose, className = "" }: PoemCardProps) {
 
       <header className="mb-4 border-b border-border pb-3">
         <h2 className="text-2xl font-bold text-ink" style={{ fontFamily: "var(--font-serif)" }}>
-          《{poem.title}》
+          《{poem.name}》
         </h2>
         <p className="mt-1 text-sm text-text-muted">
-          {poem.author} · {poem.dynasty}
-          {poem.type && <span className="ml-2 text-xs text-text-muted">（{poem.type}）</span>}
+          {poem.author} · {poem.dynasty || "不详"}
         </p>
       </header>
 
       {/* 诗句横排 */}
       <div className="space-y-1 py-2">
-        {displayLines.map((line, i) => (
-          <p key={i} className="text-ink leading-relaxed text-lg">
-            {line}
-          </p>
-        ))}
+        {poem.content.map((line: string, i: number) => {
+          const isHighlighted =
+            poem.matchedLineIndex !== undefined && i === poem.matchedLineIndex;
+          return (
+            <p
+              key={i}
+              className={`leading-relaxed text-lg ${
+                isHighlighted ? "text-accent font-semibold" : "text-ink"
+              }`}
+            >
+              {line}
+            </p>
+          );
+        })}
       </div>
 
       {/* 赏析 */}

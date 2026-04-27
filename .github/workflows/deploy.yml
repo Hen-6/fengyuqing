@@ -33,9 +33,6 @@ jobs:
       - name: Install tsx for build scripts
         run: npm install -D tsx
 
-      - name: Copy poems.json to public
-        run: mkdir -p public/data && cp data/poems.json public/data/poems.json
-
       - name: Build
         run: npm run build
 
