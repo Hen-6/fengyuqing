@@ -679,10 +679,19 @@ def main():
 
     async def run():
         await _load_poems()
-        async with bot:
-            if send_now:
-                await _send_once(bot)
-            else:
+        if send_now:
+            # connect() + _send_once() 并发执行，发完立即 close
+            async with bot:
+                conn_task = asyncio.create_task(bot.connect())
+                send_task = asyncio.create_task(_send_once(bot))
+                done, pending = await asyncio.wait(
+                    [conn_task, send_task], return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in pending:
+                    t.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+        else:
+            async with bot:
                 await bot.start(TOKEN)
 
     asyncio.run(run())
