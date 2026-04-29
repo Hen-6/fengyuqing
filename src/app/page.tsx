@@ -1,23 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { loadStore } from "@/lib/user";
+import { exportProgress, importProgress, loadStore } from "@/lib/user";
 import { FamiliarityChart } from "@/components/ui/FamiliarityChart";
-import { useEffect, useState } from "react";
-
+import { useLogin } from "@/lib/login";
 export default function HomePage() {
-  const [ready, setReady] = useState(false);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-
-  useEffect(() => {
-    const store = loadStore();
-    if (!store.initialized) {
-      setNeedsOnboarding(true);
-    }
-    setReady(true);
-  }, []);
-
-  if (!ready) return null;
+  const store = loadStore();
+  const { uuid, discordId, copyUUID, copied } = useLogin();
 
   const games = [
     {
@@ -62,22 +51,45 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* 引导横幅 */}
-        {needsOnboarding && (
-          <Link
-            href="/games/feihua/"
-            className="flex items-center justify-between rounded-2xl border-2 border-accent bg-accent-light px-6 py-4 text-accent hover:bg-red-50 transition-colors"
-          >
-            <div>
-              <div className="font-semibold">欢迎来到风雨情！</div>
-              <div className="text-sm opacity-80">建议先玩 3 轮飞花令，快速了解诗词积累</div>
-            </div>
-            <span className="text-2xl">→</span>
-          </Link>
-        )}
-
         {/* 学习进度 */}
         <FamiliarityChart />
+
+        {/* Discord 绑定 */}
+        {!discordId && (
+          <div className="rounded-2xl border border-present bg-present/10 p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🔗</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-ink">绑定 Discord 账号</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  将诗词进度同步到 Discord 机器人
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded bg-paper px-2 py-1 text-xs text-ink">
+                    {uuid || "加载中…"}
+                  </code>
+                  <button
+                    onClick={copyUUID}
+                    className="shrink-0 rounded bg-present px-2 py-1 text-xs text-white"
+                  >
+                    {copied ? "已复制 ✓" : "复制"}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-xs text-text-muted">
+                  复制 UUID，然后在 Discord 发送&nbsp;
+                  <code className="rounded bg-paper px-1 text-xs">/绑定 &lt;粘贴UUID&gt;</code>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {discordId && (
+          <div className="rounded-2xl border border-correct bg-correct/10 p-4 text-center">
+            <p className="text-sm text-correct">✅ Discord 账号已绑定</p>
+            <p className="mt-1 text-xs text-text-muted">诗词进度已与 Discord 同步</p>
+          </div>
+        )}
 
         {/* 游戏入口 */}
         <section>
@@ -139,8 +151,7 @@ export default function HomePage() {
           <div className="flex gap-3 mt-3">
             <button
               onClick={() => {
-                const { exportProgress, loadStore: ls } = require("@/lib/user");
-                const json = exportProgress(ls());
+                const json = exportProgress(store);
                 const blob = new Blob([json], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
@@ -153,7 +164,31 @@ export default function HomePage() {
             >
               导出进度
             </button>
-            <ImportButton />
+            <button
+              onClick={() => {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = ".json";
+                input.onchange = () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const ok = importProgress(reader.result as string);
+                    if (ok) {
+                      window.location.reload();
+                    } else {
+                      alert("导入失败，文件格式错误");
+                    }
+                  };
+                  reader.readAsText(file);
+                };
+                input.click();
+              }}
+              className="btn-secondary flex-1"
+            >
+              导入进度
+            </button>
           </div>
         </section>
 
@@ -164,36 +199,5 @@ export default function HomePage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ImportButton() {
-  return (
-    <button
-      onClick={() => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-        input.onchange = () => {
-          const file = input.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            const { importProgress } = require("@/lib/user");
-            const ok = importProgress(reader.result as string);
-            if (ok) {
-              window.location.reload();
-            } else {
-              alert("导入失败，文件格式错误");
-            }
-          };
-          reader.readAsText(file);
-        };
-        input.click();
-      }}
-      className="btn-secondary flex-1"
-    >
-      导入进度
-    </button>
   );
 }

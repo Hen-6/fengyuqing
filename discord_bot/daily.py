@@ -230,13 +230,20 @@ def load_rank() -> list[dict]:
 
 # ─── 数据库 ─────────────────────────────────────────────────────────────────
 
-def get_user_state(user_id: str) -> dict:
+def _get_conn():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
         "CREATE TABLE IF NOT EXISTS user_progress (user_id TEXT PRIMARY KEY, data TEXT)"
     )
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS user_bindings (uuid TEXT PRIMARY KEY, discord_id TEXT)"
+    )
     conn.commit()
+    return conn, cur
+
+def get_user_state(user_id: str) -> dict:
+    conn, cur = _get_conn()
     cur.execute("SELECT data FROM user_progress WHERE user_id = ?", (user_id,))
     row = cur.fetchone()
     conn.close()
@@ -246,14 +253,34 @@ def get_user_state(user_id: str) -> dict:
 
 
 def save_user_state(user_id: str, data: dict):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+    conn, cur = _get_conn()
     cur.execute(
         "INSERT OR REPLACE INTO user_progress (user_id, data) VALUES (?, ?)",
         (user_id, json.dumps(data)),
     )
     conn.commit()
     conn.close()
+
+
+def bind_uuid(uuid: str, discord_id: str) -> bool:
+    """绑定前端 UUID → Discord ID"""
+    conn, cur = _get_conn()
+    cur.execute(
+        "INSERT OR REPLACE INTO user_bindings (uuid, discord_id) VALUES (?, ?)",
+        (uuid, str(discord_id)),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_discord_id(uuid: str) -> str | None:
+    """通过 UUID 查找 Discord ID"""
+    conn, cur = _get_conn()
+    cur.execute("SELECT discord_id FROM user_bindings WHERE uuid = ?", (uuid,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 
 def advance_daily_rank(state: dict, total: int) -> int:
@@ -588,6 +615,29 @@ async def cmd_verify(interaction: discord.Interaction, line: str):
     msg = "✅ 完全正确！" if result.score >= 80 else f"✅ 找到相似诗句（{result.score}分）"
     embed = make_embed(poem, f"{msg} 已记录为 Lv.3", show_note=True, color=GREEN)
     await interaction.followup.send(embed=embed)
+
+
+# ─── 命令：绑定 ─────────────────────────────────────────────────────────────
+
+@bot.tree.command(name="绑定", description="绑定风雨情网站账号（输入网站上的 UUID）")
+@app_commands.describe(uuid="从网站复制的 UUID")
+async def cmd_bind(interaction: discord.Interaction, uuid: str):
+    uuid = uuid.strip()
+    if not uuid or len(uuid) < 10:
+        await interaction.response.send_message(
+            "❌ UUID 格式错误，请确保粘贴完整的 UUID。\n"
+            "前往 https://fengyuqing.github.io/fengyuqing/ 复制你的 UUID",
+            ephemeral=True,
+        )
+        return
+
+    bind_uuid(uuid, str(interaction.user.id))
+    await interaction.response.send_message(
+        f"✅ 账号绑定成功！\n\n"
+        f"你的 Discord <@{interaction.user.id}> 已与 UUID `{uuid}` 关联。\n"
+        f"网站的诗词学习进度现在可以与 Discord 同步了。",
+        ephemeral=True,
+    )
 
 
 # ─── 消息处理：接收熟练度反馈 ──────────────────────────────────────────────

@@ -6,16 +6,16 @@ import { CharPicker } from "@/components/ui/CharPicker";
 import { VoiceInput } from "@/components/ui/VoiceInput";
 import { OnlinePoemResult, searchOnline } from "@/lib/onlineSearch";
 import { FEIHUA_CHARS } from "@/lib/poems";
-import { loadStore, markPoemAnswered, initializeAllPoems } from "@/lib/user";
-import { useEffect } from "react";
+import { useUser } from "@/lib/userContext";
 
 interface BotPoem {
   poem: OnlinePoemResult;
   lineIndex: number;
-  cleanLine: string;
+  cleanLine: string; // 原诗句，含标点
 }
 
 export function FeihuaGame() {
+  const { markPoemAnswered, setLevel } = useUser();
   const [selectedChar, setSelectedChar] = useState<string>("");
   const [phase, setPhase] = useState<"pick" | "playing">("pick");
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
@@ -26,14 +26,6 @@ export function FeihuaGame() {
   const [showBotModal, setShowBotModal] = useState(false);
   const [similarPoems, setSimilarPoems] = useState<OnlinePoemResult[]>([]);
   const [searching, setSearching] = useState(false);
-
-  const store = loadStore();
-
-  useEffect(() => {
-    if (!store.initialized) {
-      initializeAllPoems(store);
-    }
-  }, [store]);
 
   /** 选一个字后，在线搜索含该字的诗，随机选一句 */
   const selectChar = useCallback(async (char: string) => {
@@ -57,15 +49,15 @@ export function FeihuaGame() {
 
     // 随机挑一首，再从其诗句中随机选一句
     const pick = hits[Math.floor(Math.random() * hits.length)];
-    const lines = pick.poem.content.filter((l) => l.replace(/<[^>]+>/g, "").replace(/[，。？！、；：]/g, "").trim().length >= 4);
+    const lines = pick.poem.content.filter((l) => l.replace(/<[^>]+>/g, "").trim().length >= 4);
     if (lines.length === 0) {
       setFeedback({ ok: false, msg: "这首诗没有可用的句子" });
       return;
     }
     const lineIdx = Math.floor(Math.random() * lines.length);
-    const cleanLine = lines[lineIdx].replace(/[，。？！、；：]/g, "");
+    const rawLine = lines[lineIdx];
 
-    setBotPoem({ poem: pick.poem, lineIndex: lineIdx, cleanLine });
+    setBotPoem({ poem: pick.poem, lineIndex: lineIdx, cleanLine: rawLine });
     setPhase("playing");
   }, []);
 
@@ -96,9 +88,9 @@ export function FeihuaGame() {
     setSimilarPoems([]);
     setOnlineResult(hit.poem);
     setFeedback({ ok: true, msg: "✓ 正确！" });
-    markPoemAnswered(store, hit.poem._id || `${hit.poem.name}:${hit.poem.author}`);
+    markPoemAnswered(hit.poem._id || `${hit.poem.name}:${hit.poem.author}`);
     setShowCard(true);
-  }, [store]);
+  }, []);
 
   const handleSubmit = useCallback(() => {
     submitText(userInput);
@@ -129,9 +121,9 @@ export function FeihuaGame() {
     setSimilarPoems([]);
     setOnlineResult(poem);
     setFeedback({ ok: true, msg: "✓ 已选用该诗句" });
-    markPoemAnswered(store, poem._id || `${poem.name}:${poem.author}`);
+    markPoemAnswered(poem._id || `${poem.name}:${poem.author}`);
     setShowCard(true);
-  }, [store]);
+  }, []);
 
   return (
     <div className="mx-auto max-w-lg">
@@ -207,9 +199,7 @@ export function FeihuaGame() {
                     <button
                       key={lvl}
                       onClick={() => {
-                        const { setLevel } = require("@/lib/user");
                         setLevel(
-                          store,
                           botPoem!.poem._id || `${botPoem!.poem.name}:${botPoem!.poem.author}`,
                           lvl
                         );

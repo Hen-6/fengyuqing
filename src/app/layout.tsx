@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ShanShuaiBackground from "@/components/ShanShuiBackground";
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "风雨情",
@@ -15,10 +16,12 @@ export default function RootLayout({
   return (
     <html lang="zh-Hans">
       <body>
-        <ShanShuaiBackground />
-        <div style={{ position: "relative", zIndex: 1 }}>
-          {children}
-        </div>
+        <Providers>
+          <ShanShuaiBackground />
+          <div style={{ position: "relative", zIndex: 1 }}>
+            {children}
+          </div>
+        </Providers>
       </body>
     </html>
   );

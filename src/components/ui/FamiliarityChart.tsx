@@ -1,12 +1,11 @@
 "use client";
 
-import { getOverview } from "@/lib/user";
-import { loadStore } from "@/lib/user";
 import { LEVEL_LABELS } from "@/lib/srs";
+import { useUser } from "@/lib/userContext";
 
 export function FamiliarityChart() {
-  const store = loadStore();
-  const { total, level3plus, level5, dueToday } = getOverview(store);
+  const { overview } = useUser();
+  const { total, level3plus, level5, dueToday } = overview;
 
   const items = [
     { label: "已识句（Lv.3+）", value: level3plus, color: "bg-correct" },
