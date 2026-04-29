@@ -680,16 +680,22 @@ def main():
     async def run():
         await _load_poems()
         if send_now:
-            # connect() + _send_once() 并发执行，发完立即 close
-            async with bot:
-                conn_task = asyncio.create_task(bot.connect())
-                send_task = asyncio.create_task(_send_once(bot))
-                done, pending = await asyncio.wait(
-                    [conn_task, send_task], return_when=asyncio.FIRST_COMPLETED
-                )
-                for t in pending:
-                    t.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
+            # send_now 专用：等待 on_ready 后才发消息
+            ready = asyncio.Event()
+
+            class LiteBot(discord.Client):
+                async def setup_hook(self):
+                    pass
+
+                async def on_ready(self):
+                    ready.set()
+
+            lite = LiteBot()
+            await lite.login(TOKEN)
+            asyncio.create_task(lite.connect())
+            await ready.wait()
+            await _send_once(lite)
+            await lite.close()
         else:
             async with bot:
                 await bot.start(TOKEN)
