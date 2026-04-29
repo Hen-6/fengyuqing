@@ -30,6 +30,7 @@ RANK_PATH = BOT_DIR.parent / "data" / "rank.json"
 CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID", "0"))  # 推送目标频道 ID
 TARGET_USER_ID = int(os.environ.get("DISCORD_TARGET_USER_ID", "0"))  # 推送目标用户 ID
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
+send_now = os.environ.get("DISCORD_SEND_NOW", "").lower() == "true"  # 模块级标志
 
 # ─── yxcs 数据源 ───────────────────────────────────────────────────────────
 
@@ -307,7 +308,8 @@ class DailyBot(discord.Client):
 
     async def setup_hook(self):
         await self.tree.sync()
-        self._daily_task = asyncio.create_task(_daily_sender(self))
+        if not send_now:
+            self._daily_task = asyncio.create_task(_daily_sender(self))
 
 
 # ─── 每日自动推送任务 ─────────────────────────────────────────────────────
@@ -324,7 +326,6 @@ async def _get_next_send_time() -> datetime:
 async def _daily_sender(self: DailyBot):
     """每分钟检查一次，是否到 UTC 14:00；到时自动发送每日诗词"""
     print("[bot] 每日推送任务已启动")
-    send_now = os.environ.get("DISCORD_SEND_NOW", "").lower() == "true"
 
     while True:
         try:
@@ -620,16 +621,69 @@ async def on_message(message: discord.Message):
 
 # ─── 主程序 ─────────────────────────────────────────────────────────────────
 
+async def _send_once(bot: DailyBot):
+    """send_now=true 时：加载诗词 → 发 DM → 立即退出"""
+    await _load_poems()
+    if TARGET_USER_ID == 0:
+        print("ERROR: DISCORD_TARGET_USER_ID not set", file=sys.stderr)
+        return
+
+    rank_list = load_rank()
+    if not rank_list:
+        print("ERROR: rank.json not found or empty", file=sys.stderr)
+        return
+
+    state = get_user_state("__global__")
+    next_rank = advance_daily_rank(state, len(rank_list))
+    save_user_state("__global__", state)
+
+    entry = next((e for e in rank_list if e["r"] == next_rank), rank_list[0])
+    poem = find_poem_by_title(entry["t"])
+
+    try:
+        user = await asyncio.wait_for(bot.fetch_user(TARGET_USER_ID), timeout=15.0)
+    except asyncio.TimeoutError:
+        print(f"[bot] fetch_user 超时（{TARGET_USER_ID}）", file=sys.stderr)
+        return
+
+    if user is None:
+        print(f"[bot] 找不到用户 {TARGET_USER_ID}", file=sys.stderr)
+        return
+
+    try:
+        dm = user.dm_channel or await asyncio.wait_for(user.create_dm(), timeout=15.0)
+    except asyncio.TimeoutError:
+        print(f"[bot] create_dm 超时", file=sys.stderr)
+        return
+
+    if poem:
+        embed = make_embed(
+            poem,
+            f"📜 今日诗词 · 第 {next_rank} 首（共 {len(rank_list)} 首）",
+            show_note=True,
+        )
+        await dm.send(
+            "🌸 每日诗词推送 · 回复 /状态 查看你的学习进度，或在下方选择熟练度",
+            embed=embed,
+        )
+        print(f"[bot] 已推送：{poem.name} — rank {next_rank}")
+    else:
+        await dm.send(f"⚠️ 未找到《{entry['t']}》的诗词内容")
+        print(f"[bot] 未找到：{entry['t']}")
+
+
 def main():
     if not TOKEN:
         print("ERROR: DISCORD_BOT_TOKEN not set", file=sys.stderr)
         sys.exit(1)
 
     async def run():
-        # 先加载诗词数据，再启动 bot
         await _load_poems()
         async with bot:
-            await bot.start(TOKEN)
+            if send_now:
+                await _send_once(bot)
+            else:
+                await bot.start(TOKEN)
 
     asyncio.run(run())
 
