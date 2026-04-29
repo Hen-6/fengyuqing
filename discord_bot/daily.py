@@ -351,11 +351,13 @@ async def _daily_sender(self: DailyBot):
             entry = next((e for e in rank_list if e["r"] == next_rank), rank_list[0])
             poem = find_poem_by_title(entry["t"])
 
-            user = await self.fetch_user(TARGET_USER_ID)
+            user = await asyncio.wait_for(self.fetch_user(TARGET_USER_ID), timeout=15.0)
             if user is None:
                 print(f"[bot] 找不到用户 {TARGET_USER_ID}", file=sys.stderr)
             else:
-                dm = user.dm_channel or await user.create_dm()
+                dm = user.dm_channel
+                if dm is None:
+                    dm = await asyncio.wait_for(user.create_dm(), timeout=15.0)
                 if poem:
                     embed = make_embed(
                         poem,
