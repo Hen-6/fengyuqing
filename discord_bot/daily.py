@@ -307,7 +307,7 @@ class DailyBot(discord.Client):
 
     async def setup_hook(self):
         await self.tree.sync()
-        self._daily_task = asyncio.create_task(self._daily_sender())
+        self._daily_task = asyncio.create_task(_daily_sender(self))
 
 
 # ─── 每日自动推送任务 ─────────────────────────────────────────────────────
