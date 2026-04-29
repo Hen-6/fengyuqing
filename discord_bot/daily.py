@@ -324,68 +324,59 @@ async def _get_next_send_time() -> datetime:
 async def _daily_sender(self: DailyBot):
     """每分钟检查一次，是否到 UTC 14:00；到时自动发送每日诗词"""
     print("[bot] 每日推送任务已启动")
+    send_now = os.environ.get("DISCORD_SEND_NOW", "").lower() == "true"
 
     while True:
         try:
             now_utc = datetime.now(timezone.utc)
-            # 判断是否接近 UTC 14:00（1 分钟内）
-            if (
-                not _loaded
-                or TARGET_USER_ID == 0
-                or not _poem_cache
-            ):
+            if not _loaded or TARGET_USER_ID == 0 or not _poem_cache:
                 await asyncio.sleep(60)
                 continue
 
-            send_now = os.environ.get("DISCORD_SEND_NOW", "").lower() == "true"
-            target_hour = 14
-            if (
-                send_now
-                or (
-                    now_utc.hour == target_hour
-                    and now_utc.minute == 0
-                    and _loaded
-                    and TARGET_USER_ID != 0
-                    and _poem_cache
-                )
-            ):
-                rank_list = load_rank()
-                if not rank_list:
-                    await asyncio.sleep(60)
-                    continue
-
-                # 全局 rank 推进（不绑定用户）
-                state = get_user_state("__global__")
-                next_rank = advance_daily_rank(state, len(rank_list))
-                save_user_state("__global__", state)
-
-                entry = next((e for e in rank_list if e["r"] == next_rank), rank_list[0])
-                poem = find_poem_by_title(entry["t"])
-
-                user = await self.fetch_user(TARGET_USER_ID)
-                if user is None:
-                    print(f"[bot] 找不到用户 {TARGET_USER_ID}", file=sys.stderr)
-                else:
-                    dm = user.dm_channel or await user.create_dm()
-                    if poem:
-                        embed = make_embed(
-                            poem,
-                            f"📜 今日诗词 · 第 {next_rank} 首（共 {len(rank_list)} 首）",
-                            show_note=True,
-                        )
-                        await dm.send(
-                            "🌸 每日诗词推送 · 回复 /状态 查看你的学习进度，或在下方选择熟练度",
-                            embed=embed,
-                        )
-                        print(f"[bot] 已推送：{poem.name} — rank {next_rank}")
-                    else:
-                        await dm.send(f"⚠️ 未找到《{entry['t']}》的诗词内容")
-                        print(f"[bot] 未找到：{entry['t']}")
-
-                # 推送后等 70 秒，防止重复发送
-                await asyncio.sleep(70)
-            else:
+            should_send = send_now or (now_utc.hour == 14 and now_utc.minute == 0)
+            if not should_send:
                 await asyncio.sleep(30)
+                continue
+
+            rank_list = load_rank()
+            if not rank_list:
+                await asyncio.sleep(60)
+                continue
+
+            # 全局 rank 推进（不绑定用户）
+            state = get_user_state("__global__")
+            next_rank = advance_daily_rank(state, len(rank_list))
+            save_user_state("__global__", state)
+
+            entry = next((e for e in rank_list if e["r"] == next_rank), rank_list[0])
+            poem = find_poem_by_title(entry["t"])
+
+            user = await self.fetch_user(TARGET_USER_ID)
+            if user is None:
+                print(f"[bot] 找不到用户 {TARGET_USER_ID}", file=sys.stderr)
+            else:
+                dm = user.dm_channel or await user.create_dm()
+                if poem:
+                    embed = make_embed(
+                        poem,
+                        f"📜 今日诗词 · 第 {next_rank} 首（共 {len(rank_list)} 首）",
+                        show_note=True,
+                    )
+                    await dm.send(
+                        "🌸 每日诗词推送 · 回复 /状态 查看你的学习进度，或在下方选择熟练度",
+                        embed=embed,
+                    )
+                    print(f"[bot] 已推送：{poem.name} — rank {next_rank}")
+                else:
+                    await dm.send(f"⚠️ 未找到《{entry['t']}》的诗词内容")
+                    print(f"[bot] 未找到：{entry['t']}")
+
+            if send_now:
+                print("[bot] send_now 模式：发送完毕，退出")
+                return
+
+            # 定时模式：推送后等 70 秒，防止重复发送
+            await asyncio.sleep(70)
 
         except asyncio.CancelledError:
             print("[bot] 每日推送任务已取消")
