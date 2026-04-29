@@ -337,13 +337,17 @@ async def _daily_sender(self: DailyBot):
                 await asyncio.sleep(60)
                 continue
 
+            send_now = os.environ.get("DISCORD_SEND_NOW", "").lower() == "true"
             target_hour = 14
             if (
-                now_utc.hour == target_hour
-                and now_utc.minute == 0
-                and _loaded
-                and TARGET_USER_ID != 0
-                and _poem_cache
+                send_now
+                or (
+                    now_utc.hour == target_hour
+                    and now_utc.minute == 0
+                    and _loaded
+                    and TARGET_USER_ID != 0
+                    and _poem_cache
+                )
             ):
                 rank_list = load_rank()
                 if not rank_list:

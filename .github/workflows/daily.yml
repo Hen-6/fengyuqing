@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 14 * * *"  # 每天 UTC 14:00 = 北京时间 22:00
   workflow_dispatch:
+    inputs:
+      send_now:
+        description: "立即发送（跳过等待 UTC 14:00）"
+        required: false
+        default: "false"
 
 jobs:
   send:
@@ -28,4 +33,6 @@ jobs:
       - name: Run daily poem bot
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_TARGET_USER_ID: ${{ secrets.DISCORD_TARGET_USER_ID }}
+          DISCORD_SEND_NOW: ${{ github.event.inputs.send_now || 'false' }}
         run: python -m discord_bot.daily
