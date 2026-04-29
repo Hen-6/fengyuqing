@@ -693,8 +693,6 @@ def main():
             intents = discord.Intents.default()
             intents.message_content = True
             lite = LiteBot(intents=intents)
-
-            lite = LiteBot()
             await lite.login(TOKEN)
             asyncio.create_task(lite.connect())
             await ready.wait()
