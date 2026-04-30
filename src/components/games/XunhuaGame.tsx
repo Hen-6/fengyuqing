@@ -167,7 +167,7 @@ export function XunhuaGame() {
       setScore(finalScore);
       setPhase("won");
       if (target) {
-        markPoemAnswered(store, target._id || `${target.name}:${target.author}`);
+        markPoemAnswered(store, `${target.name.trim()}:${target.author.trim()}`);
       }
       setGuess("");
       return;
@@ -250,7 +250,7 @@ export function XunhuaGame() {
     const finalScore = calcScore(guesses.length + 1);
     setScore(finalScore);
     setPhase("won");
-    if (poem) markPoemAnswered(store, poem._id || `${poem.name}:${poem.author}`);
+    if (poem) markPoemAnswered(store, `${poem.name.trim()}:${poem.author.trim()}`);
     setGuess("");
     setShowConfirm(null);
   }, [showConfirm, guesses, store]);

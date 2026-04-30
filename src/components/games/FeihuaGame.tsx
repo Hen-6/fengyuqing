@@ -14,6 +14,22 @@ interface BotPoem {
   cleanLine: string; // 原诗句，含标点
 }
 
+function cleanHtml(text: string): string {
+  return text.replace(/<[^>]+>/g, "").trim();
+}
+
+function stripPunct(s: string): string {
+  return s.replace(/[，。？！、；：""''【】「」()（）·—–\-…\s.,?!'":;\[\]「」『』【】]/g, "");
+}
+
+interface RoundEntry {
+  char: string;
+  botPoem: BotPoem;
+  userPoem: OnlinePoemResult | null;
+  userLine: string; // 用户输入的原始文字
+  skipped: boolean;
+}
+
 export function FeihuaGame() {
   const { markPoemAnswered, setLevel } = useUser();
   const [selectedChar, setSelectedChar] = useState<string>("");
@@ -26,6 +42,12 @@ export function FeihuaGame() {
   const [showBotModal, setShowBotModal] = useState(false);
   const [similarPoems, setSimilarPoems] = useState<OnlinePoemResult[]>([]);
   const [searching, setSearching] = useState(false);
+  // 回合历史
+  const [history, setHistory] = useState<RoundEntry[]>([]);
+  // 已出现过的诗（用于去重警告）
+  const [seenPoemIds, setSeenPoemIds] = useState<Set<string>>(new Set());
+  // 当前轮的"已选诗"用于历史记录
+  const [currentEntry, setCurrentEntry] = useState<RoundEntry | null>(null);
 
   /** 选一个字后，在线搜索含该字的诗，随机选一句 */
   const selectChar = useCallback(async (char: string) => {
@@ -37,7 +59,6 @@ export function FeihuaGame() {
     setShowBotModal(false);
     setSearching(true);
 
-    // 在线搜索含该字的诗
     const hits = await searchOnline(char, 20);
     setSearching(false);
 
@@ -47,19 +68,43 @@ export function FeihuaGame() {
       return;
     }
 
-    // 随机挑一首，再从其诗句中随机选一句
-    const pick = hits[Math.floor(Math.random() * hits.length)];
-    const lines = pick.poem.content.filter((l) => l.replace(/<[^>]+>/g, "").trim().length >= 4);
-    if (lines.length === 0) {
+    // 过滤掉已出现过的诗（去重），如果全部重复则允许重复
+    const unseen = hits.filter(
+      (h) => !seenPoemIds.has(`${h.poem.name.trim()}:${h.poem.author.trim()}`)
+    );
+    const pool = unseen.length > 0 ? unseen : hits;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+
+    // 优先选包含目标字的诗句，优先五言/七言
+    const allLines = pick.poem.content
+      .map((l, i) => ({ raw: l, idx: i }))
+      .filter(({ raw }) => cleanHtml(raw).trim().length >= 4);
+
+    const charLines = allLines.filter(
+      ({ raw }) => stripPunct(raw).includes(char)
+    );
+    const preferredPool =
+      charLines.length > 0 ? charLines : allLines;
+
+    // 从优先池中尽量选五言(5)或七言(7)的句子
+    const sizeLines = preferredPool.filter(
+      ({ raw }) => [5, 7].includes(stripPunct(raw).length)
+    );
+    const lineChoices = sizeLines.length > 0 ? sizeLines : preferredPool;
+
+    if (lineChoices.length === 0) {
       setFeedback({ ok: false, msg: "这首诗没有可用的句子" });
       return;
     }
-    const lineIdx = Math.floor(Math.random() * lines.length);
-    const rawLine = lines[lineIdx];
+    const chosen = lineChoices[Math.floor(Math.random() * lineChoices.length)];
+    const lineIdx = chosen.idx;
+    const rawLine = chosen.raw;
 
-    setBotPoem({ poem: pick.poem, lineIndex: lineIdx, cleanLine: rawLine });
+    const newBotPoem = { poem: pick.poem, lineIndex: lineIdx, cleanLine: rawLine };
+    setBotPoem(newBotPoem);
+    setCurrentEntry({ char, botPoem: newBotPoem, userPoem: null, userLine: "", skipped: false });
     setPhase("playing");
-  }, []);
+  }, [seenPoemIds]);
 
   const handleRandom = useCallback(() => {
     const char = FEIHUA_CHARS[Math.floor(Math.random() * FEIHUA_CHARS.length)];
@@ -83,14 +128,27 @@ export function FeihuaGame() {
       return;
     }
 
-    // 第一个就是最匹配的
     const hit = hits[0];
     setSimilarPoems([]);
     setOnlineResult(hit.poem);
     setFeedback({ ok: true, msg: "✓ 正确！" });
-    markPoemAnswered(hit.poem._id || `${hit.poem.name}:${hit.poem.author}`);
+    markPoemAnswered(`${hit.poem.name.trim()}:${hit.poem.author.trim()}`);
     setShowCard(true);
-  }, []);
+
+    // 更新历史记录
+    const entry: RoundEntry = {
+      char: selectedChar,
+      botPoem: botPoem!,
+      userPoem: hit.poem,
+      userLine: input,
+      skipped: false,
+    };
+    setHistory((prev) => [entry, ...prev]);
+    setCurrentEntry(entry);
+    // 标记该诗为已见
+    const pid = `${hit.poem.name.trim()}:${hit.poem.author.trim()}`;
+    setSeenPoemIds((prev) => new Set([...prev, pid]));
+  }, [selectedChar, botPoem, markPoemAnswered]);
 
   const handleSubmit = useCallback(() => {
     submitText(userInput);
@@ -103,6 +161,14 @@ export function FeihuaGame() {
 
   const handleNextForSameChar = useCallback(async () => {
     if (!selectedChar) return;
+    // 重置当前状态但保留历史
+    setOnlineResult(null);
+    setSimilarPoems([]);
+    setFeedback(null);
+    setShowCard(false);
+    setShowBotModal(false);
+    setUserInput("");
+    setCurrentEntry(null);
     await selectChar(selectedChar);
   }, [selectedChar, selectChar]);
 
@@ -115,15 +181,50 @@ export function FeihuaGame() {
     setShowCard(false);
     setShowBotModal(false);
     setPhase("pick");
+    // 保留历史
   }, []);
 
   const selectSimilarPoem = useCallback((poem: OnlinePoemResult) => {
     setSimilarPoems([]);
     setOnlineResult(poem);
     setFeedback({ ok: true, msg: "✓ 已选用该诗句" });
-    markPoemAnswered(poem._id || `${poem.name}:${poem.author}`);
+    markPoemAnswered(`${poem.name.trim()}:${poem.author.trim()}`);
     setShowCard(true);
-  }, []);
+
+    const entry: RoundEntry = {
+      char: selectedChar,
+      botPoem: botPoem!,
+      userPoem: poem,
+      userLine: poem.matchedLine || "",
+      skipped: false,
+    };
+    setHistory((prev) => [entry, ...prev]);
+    setCurrentEntry(entry);
+    const pid = `${poem.name.trim()}:${poem.author.trim()}`;
+    setSeenPoemIds((prev) => new Set([...prev, pid]));
+  }, [selectedChar, botPoem, markPoemAnswered]);
+
+  // 标记跳过（放弃本轮）
+  const handleSkip = useCallback(() => {
+    if (!botPoem) return;
+    const entry: RoundEntry = {
+      char: selectedChar,
+      botPoem,
+      userPoem: null,
+      userLine: "",
+      skipped: true,
+    };
+    setHistory((prev) => [entry, ...prev]);
+    setCurrentEntry(entry);
+    // 不记录到seen，直接下一题
+    handleNextForSameChar();
+  }, [botPoem, selectedChar, handleNextForSameChar]);
+
+  const dupWarning = botPoem
+    ? seenPoemIds.has(`${botPoem.poem.name.trim()}:${botPoem.poem.author.trim()}`)
+      ? "⚠️ 这首诗本局已出现过"
+      : null
+    : null;
 
   return (
     <div className="mx-auto max-w-lg">
@@ -147,6 +248,34 @@ export function FeihuaGame() {
           <div className="text-center text-xs text-text-muted">— 或 自选关键词 —</div>
 
           <CharPicker selected={selectedChar} onSelect={selectChar} />
+
+          {/* 历史记录（选字阶段也可见） */}
+          {history.length > 0 && (
+            <details className="rounded-xl border border-border bg-surface p-4">
+              <summary className="cursor-pointer text-xs text-text-muted hover:text-accent">
+                本局历史（{history.length}轮）▼ 点击展开
+              </summary>
+              <div className="mt-3 space-y-3">
+                {history.map((entry, idx) => (
+                  <div key={idx} className="rounded-lg border border-border bg-paper/60 p-3 text-sm">
+                    <div className="text-xs text-text-muted mb-1">
+                      关键字「{entry.char}」
+                      {entry.skipped && <span className="ml-2 text-present">已跳过</span>}
+                    </div>
+                    <div className="text-text-muted text-xs">系统出：{entry.botPoem.cleanLine}</div>
+                    {entry.userLine && (
+                      <div className="text-accent text-xs mt-0.5">
+                        ← 你接：{entry.userLine}
+                      </div>
+                    )}
+                    <div className="text-xs text-text-muted mt-0.5">
+                      《{entry.botPoem.poem.name}》— {entry.botPoem.poem.author}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
@@ -169,6 +298,11 @@ export function FeihuaGame() {
               <button onClick={handleSwitchChar} className="underline hover:text-accent">自选关键词</button>
             </div>
           </div>
+
+          {/* 重复警告 */}
+          {dupWarning && (
+            <p className="text-center text-sm text-present font-medium">{dupWarning}</p>
+          )}
 
           {/* 系统出句 */}
           {botPoem && (
@@ -200,7 +334,7 @@ export function FeihuaGame() {
                       key={lvl}
                       onClick={() => {
                         setLevel(
-                          botPoem!.poem._id || `${botPoem!.poem.name}:${botPoem!.poem.author}`,
+                          `${botPoem!.poem.name.trim()}:${botPoem!.poem.author.trim()}`,
                           lvl
                         );
                       }}
@@ -270,9 +404,14 @@ export function FeihuaGame() {
                 </div>
               )}
 
-              <button onClick={handleSubmit} className="btn-primary w-full">
-                提交
-              </button>
+              <div className="flex gap-3">
+                <button onClick={handleSubmit} className="btn-primary flex-1">
+                  提交
+                </button>
+                <button onClick={handleSkip} className="btn-secondary">
+                  跳过
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -300,6 +439,34 @@ export function FeihuaGame() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* 本局历史 */}
+          {history.length > 0 && (
+            <details className="rounded-xl border border-border bg-surface p-4">
+              <summary className="cursor-pointer text-xs text-text-muted hover:text-accent">
+                本局历史（{history.length}轮）▼ 点击展开
+              </summary>
+              <div className="mt-3 space-y-3">
+                {history.map((entry, idx) => (
+                  <div key={idx} className="rounded-lg border border-border bg-paper/60 p-3 text-sm">
+                    <div className="text-xs text-text-muted mb-1">
+                      关键字「{entry.char}」
+                      {entry.skipped && <span className="ml-2 text-present">已跳过</span>}
+                    </div>
+                    <div className="text-text-muted text-xs">系统出：{entry.botPoem.cleanLine}</div>
+                    {entry.userLine && (
+                      <div className="text-accent text-xs mt-0.5">
+                        ← 你接：{entry.userLine}
+                      </div>
+                    )}
+                    <div className="text-xs text-text-muted mt-0.5">
+                      《{entry.botPoem.poem.name}》— {entry.botPoem.poem.author}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       )}

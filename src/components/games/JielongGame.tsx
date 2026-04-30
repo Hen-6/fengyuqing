@@ -5,7 +5,7 @@ import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { VoiceInput } from "@/components/ui/VoiceInput";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemResult, searchOnline } from "@/lib/onlineSearch";
-import { loadStore, markPoemAnswered } from "@/lib/user";
+import { loadStore, markPoemAnswered, setLevel } from "@/lib/user";
 import { stripPunctuation } from "@/lib/poems";
 
 type Mode = "cross" | "same";
@@ -104,7 +104,7 @@ export function JielongGame() {
     setOnlineResult(hit.poem);
     setScore((s) => s + 1);
     setFeedback({ ok: true, msg: "✓ 正确！" });
-    markPoemAnswered(store, hit.poem._id || `${hit.poem.name}:${hit.poem.author}`);
+    markPoemAnswered(store, `${hit.poem.name.trim()}:${hit.poem.author.trim()}`);
     setShowCard(true);
   }, [userInput, botLastChar, store]);
 
@@ -180,10 +180,9 @@ export function JielongGame() {
 
   const confirmLevel = useCallback(() => {
     if (onlineResult) {
-      const { setLevel } = require("@/lib/user");
       setLevel(
         store,
-        onlineResult._id || `${onlineResult.name}:${onlineResult.author}`,
+        `${onlineResult.name.trim()}:${onlineResult.author.trim()}`,
         selectedLevel
       );
     }
