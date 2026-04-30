@@ -7,7 +7,7 @@ import { getRankList } from "@/lib/poems";
 import { PoemProgress } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { searchOnline } from "@/lib/onlineSearch";
+import { searchOnline, getPoemByKey } from "@/lib/localSearch";
 
 export default function ProgressPage() {
   const [store, setStore] = useState<ReturnType<typeof loadStore> | null>(null);
@@ -101,9 +101,9 @@ function PoemEntryRow({ item }: { item: { key: string; title: string; author: st
     if (showCard) { setShowCard(false); return; }
     setLoading(true);
     setShowCard(true);
-    const hits = await searchOnline(item.title, 3);
-    const hit = hits.find((h) => h.poem.name === item.title) ?? hits[0];
-    setPoemData(hit ?? null);
+    // 用 key（title:author）直接获取，不用搜索
+    const result = await getPoemByKey(item.key);
+    setPoemData(result ?? null);
     setLoading(false);
   };
 

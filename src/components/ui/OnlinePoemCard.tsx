@@ -1,6 +1,6 @@
 "use client";
 
-import { OnlinePoemResult } from "@/lib/onlineSearch";
+import { OnlinePoemResult } from "@/lib/localSearch";
 import { stripPunctuation } from "@/lib/poems";
 
 interface Props {

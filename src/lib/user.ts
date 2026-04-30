@@ -32,10 +32,48 @@ export function loadStore(): UserStore {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return defaultStore();
-    return JSON.parse(raw) as UserStore;
+    const store = JSON.parse(raw) as UserStore;
+    // 迁移旧数据：ObjectId key → title:author key
+    migrateStore(store);
+    return store;
   } catch {
     return defaultStore();
   }
+}
+
+/** 将旧版 ObjectId key 迁移到新的 title:author key */
+function migrateStore(store: UserStore): boolean {
+  // ObjectId 格式：24位十六进制字符（MongoDB）
+  const OBJECTID_RE = /^[0-9a-f]{24}$/i;
+  const poems = store.poems;
+  const toDelete: string[] = [];
+  let migrated = false;
+
+  for (const key of Object.keys(poems)) {
+    if (OBJECTID_RE.test(key)) {
+      toDelete.push(key);
+    }
+  }
+
+  if (toDelete.length === 0) return false;
+
+  for (const key of toDelete) {
+    const prog = poems[key];
+    if (prog?.poemId && !OBJECTID_RE.test(prog.poemId)) {
+      const newKey = prog.poemId;
+      if (!poems[newKey]) {
+        poems[newKey] = { ...prog, poemId: newKey };
+        migrated = true;
+      }
+    }
+    delete poems[key];
+  }
+
+  if (migrated) {
+    // 强制触发 saveStore 中的 JSON 序列化更新 localStorage
+    saveStore(store);
+  }
+  return migrated;
 }
 
 export function saveStore(store: UserStore): void {
@@ -47,15 +85,53 @@ export function saveStore(store: UserStore): void {
   }
 }
 
-export function getPoemProgress(store: UserStore, poemId: string): PoemProgress {
-  return store.poems[poemId] ?? createInitialProgress(poemId);
+// ─── ID normalization ───────────────────────────────────────────────────────
+// Both yxcs (name:author) and rank.json (title:author) use the same format,
+// but whitespace/trailing-space differences can occur. Normalize by trimming.
+function normId(title: string, author: string): string {
+  return `${title.trim()}:${author.trim()}`;
 }
 
-export function setPoemProgress(
-  store: UserStore,
-  progress: PoemProgress
-): void {
-  store.poems[progress.poemId] = progress;
+/** Reverse-lookup map: any yxcs-style variant → canonical rank.json ID.
+ *  Built once from rank.json, cached for the session. */
+let aliasMap: Map<string, string> | null = null;
+
+function getAliasMap(): Map<string, string> {
+  if (aliasMap) return aliasMap;
+  aliasMap = new Map();
+  for (const poem of getRankList()) {
+    const canonical = normId(poem.t, poem.a);
+    aliasMap.set(canonical, canonical);
+  }
+  return aliasMap;
+}
+
+/** Find the key under which a poem's progress is stored.
+ *  1. Try the raw ID as-is.
+ *  2. Normalize (trim) and try again.
+ *  3. Look up via alias map (yxcs "name:author" ↔ rank "title:author").
+ *  Returns the existing key if found, otherwise the trimmed canonical form. */
+function findPoemKey(store: UserStore, rawId: string): string {
+  const trimmed = rawId.trim();
+  if (store.poems[trimmed]) return trimmed;
+  if (store.poems[rawId]) return rawId;
+  const aliases = getAliasMap();
+  const canonical = aliases.get(trimmed);
+  if (canonical && canonical !== trimmed && store.poems[canonical]) return canonical;
+  return trimmed;
+}
+
+// ─── Progress accessors ─────────────────────────────────────────────────────
+
+export function getPoemProgress(store: UserStore, poemId: string): PoemProgress {
+  const key = findPoemKey(store, poemId);
+  return store.poems[key] ?? createInitialProgress(key);
+}
+
+export function setPoemProgress(store: UserStore, progress: PoemProgress): void {
+  const key = findPoemKey(store, progress.poemId);
+  progress.poemId = key;
+  store.poems[key] = progress;
   saveStore(store);
 }
 
@@ -64,9 +140,12 @@ export function upsertPoemProgress(
   poemId: string,
   updater: (p: PoemProgress) => PoemProgress
 ): void {
-  const current = getPoemProgress(store, poemId);
-  const next = updater(current);
-  setPoemProgress(store, next);
+  // Always normalize the key to avoid " 静夜思:李白" vs "静夜思:李白" mismatches
+  const existingKey = findPoemKey(store, poemId.trim());
+  const current = store.poems[existingKey] ?? createInitialProgress(existingKey);
+  const next = updater({ ...current, poemId: existingKey });
+  store.poems[existingKey] = next;
+  saveStore(store);
 }
 
 /** 游戏回答正确 → 升级到 level 3 */
@@ -95,9 +174,8 @@ export function setLevel(store: UserStore, poemId: string, level: number): void 
 
 /** 初始化所有诗为 level 1（引导结束后调用） */
 export function initializeAllPoems(store: UserStore): void {
-  const poems = getRankList();
-  for (const poem of poems) {
-    const id = `${poem.t}:${poem.a}`;
+  for (const poem of getRankList()) {
+    const id = normId(poem.t, poem.a);
     if (!store.poems[id]) {
       store.poems[id] = createInitialProgress(id);
     }
@@ -110,7 +188,7 @@ export function initializeAllPoems(store: UserStore): void {
 export function advanceDailyRank(store: UserStore): number {
   const today = new Date().toISOString().split("T")[0];
   if (store.lastDailyDate === today) {
-    return store.currentRank; // 今天已经推送过了
+    return store.currentRank;
   }
   const poems = getRankList();
   store.currentRank = (store.currentRank % poems.length) + 1;
@@ -148,7 +226,7 @@ export function getOverview(store: UserStore): {
   const today = new Date().toISOString().split("T")[0];
   let level3plus = 0, level5 = 0, dueToday = 0;
   for (const poem of poems) {
-    const id = `${poem.t}:${poem.a}`;
+    const id = normId(poem.t, poem.a);
     const p = store.poems[id] ?? createInitialProgress(id);
     if (p.level >= 3) level3plus++;
     if (p.level === 5) level5++;
