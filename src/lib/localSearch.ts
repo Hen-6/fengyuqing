@@ -1,16 +1,18 @@
 /**
- * localSearch.ts — 本地诗词搜索（从 public/data/poems.json 加载）
+ * localSearch.ts — 本地诗词搜索
  *
- * poems.json 格式：
- *   [{ r, t, a, d, id, content: string[], note }]
+ * poems.json 格式：[{ r, t, a, d, id, content: string[], note }]
  *
- * 加载策略：首次调用时 fetch 全文，存入内存索引；
- * Session 内只下载一次，浏览器自动缓存。
+ * 索引策略：
+ * - 启动时一次性加载 poems.json，构建内存索引
+ * - 字符倒排索引：char → LineEntry[]，单字符搜索 O(匹配数)
+ * - 首次加载后所有 API 均为同步，延迟 < 1ms
+ * - Session 内只下载一次，浏览器自动缓存
  */
 
 export interface PoemResult {
   _id: string;
-  name: string;      // title (yxcs 兼容)
+  name: string;
   author: string;
   dynasty: string;
   content: string[];
@@ -19,7 +21,6 @@ export interface PoemResult {
   matchedLineIndex: number;
 }
 
-// Alias for backwards compatibility with OnlinePoemCard etc.
 export type OnlinePoemResult = PoemResult;
 
 export interface SearchResult {
@@ -28,7 +29,7 @@ export interface SearchResult {
 }
 
 export interface IndexedPoem {
-  key: string;        // "title:author"
+  key: string;
   r: number;
   t: string;
   a: string;
@@ -37,133 +38,243 @@ export interface IndexedPoem {
   note: string;
 }
 
-// ─── 内存缓存 ───────────────────────────────────────────────────────────────
+// ─── 索引结构 ───────────────────────────────────────────────────────────────
+
+/** 一句诗在倒排索引中的条目 */
+interface LineEntry {
+  poem: IndexedPoem;
+  lineIndex: number;
+  clean: string;   // 去标点后的文本
+}
+
+/** 单字符倒排索引：char → 所有包含该字的诗句 */
+type CharIndex = Map<string, LineEntry[]>;
+
+// ─── 全局缓存（一次性构建，永久持有）────────────────────────────────────────
 
 let poemsIndex: IndexedPoem[] | null = null;
-let keyMap: Map<string, IndexedPoem> | null = null;   // O(1) lookup by key
-let idMap: Map<string, IndexedPoem> | null = null;    // O(1) lookup by id (yxcs _id)
-let loadPromise: Promise<IndexedPoem[]> | null = null;
+let keyMap: Map<string, IndexedPoem> | null = null;
+let idMap: Map<string, IndexedPoem> | null = null;
+let charIndex: CharIndex | null = null;
+let loadPromise: Promise<void> | null = null;
+let _loaded = false;
 
 const PUNCT_RE = /[，。？！、；：""''【】「」()（）·—–…\s.,?!'":;\[\]]+/g;
 
 function cleanHtml(text: string): string {
-  return text.replace(/<[^>]+>/g, "").trim();
+  return typeof text === "string"
+    ? text.replace(/<[^>]+>/g, "").trim()
+    : "";
 }
 
 function stripPunct(s: string): string {
   return s.replace(PUNCT_RE, "");
 }
 
-export async function loadIndex(): Promise<IndexedPoem[]> {
-  if (poemsIndex) return poemsIndex;
-  if (loadPromise) return loadPromise;
+/** 触发异步预加载（首次调用时触发，之后立即返回） */
+export function preloadIndex(): void {
+  if (_loaded || loadPromise) return;
+  loadPromise = _load().then(() => { _loaded = true; });
+}
 
-  loadPromise = (async () => {
-    const resp = await fetch("/data/poems.json", {
-      headers: { "Cache-Control": "no-cache" },
-    });
-    if (!resp.ok) throw new Error(`Failed to load poems.json: ${resp.status}`);
-    const data: Array<{
-      r: number;
-      t: string;
-      a: string;
-      d: string;
-      id: string;
-      content: string[];
-      note: string;
-    }> = await resp.json();
+export function loadIndex(): Promise<IndexedPoem[]> {
+  preloadIndex();
+  if (poemsIndex) return Promise.resolve(poemsIndex);
+  return loadPromise!.then(() => poemsIndex!);
+}
 
-    poemsIndex = [];
-    keyMap = new Map();
-    idMap = new Map();
+export async function ensureLoaded(): Promise<void> {
+  if (_loaded) return;
+  await loadIndex();
+}
 
-    for (const p of data) {
-      const poem: IndexedPoem = {
-        key: `${p.t.trim()}:${p.a.trim()}`,
-        r: p.r,
-        t: p.t,
-        a: p.a,
-        d: p.d,
-        content: (p.content || []).map(cleanHtml),
-        note: cleanHtml(p.note || ""),
-      };
-      poemsIndex.push(poem);
-      keyMap.set(poem.key, poem);
-      // 旧版 poems.json 用 id 字段，兼容 ObjectId 风格 id
-      if (p.id) idMap.set(p.id, poem);
+async function _load(): Promise<void> {
+  const resp = await fetch("/data/poems.json", {
+    headers: { "Cache-Control": "no-cache" },
+  });
+  if (!resp.ok) throw new Error(`加载 poems.json 失败: ${resp.status}`);
+  const data: Array<{
+    r: number; t: string; a: string; d: string;
+    id: string; content: string[]; note: string;
+  }> = await resp.json();
+
+  poemsIndex = [];
+  keyMap = new Map();
+  idMap = new Map();
+  charIndex = new Map();
+
+  for (const p of data) {
+    const poem: IndexedPoem = {
+      key: `${p.t.trim()}:${p.a.trim()}`,
+      r: p.r,
+      t: p.t,
+      a: p.a,
+      d: p.d,
+      content: (p.content || []).map(cleanHtml),
+      note: cleanHtml(p.note || ""),
+    };
+    poemsIndex!.push(poem);
+    keyMap!.set(poem.key, poem);
+    if (p.id) idMap!.set(p.id, poem);
+
+    for (let i = 0; i < poem.content.length; i++) {
+      const clean = stripPunct(poem.content[i]);
+      if (clean.length < 4) continue;
+      for (const ch of [...new Set(clean)]) {
+        if (ch.trim()) {
+          const entry: LineEntry = { poem, lineIndex: i, clean };
+          const existing = charIndex!.get(ch);
+          if (existing) {
+            existing.push(entry);
+          } else {
+            charIndex!.set(ch, [entry]);
+          }
+        }
+      }
     }
-
-    return poemsIndex;
-  })();
-
-  return loadPromise;
+  }
 }
 
 // ─── 搜索 ─────────────────────────────────────────────────────────────────
 
 /**
- * 在本地诗词库中搜索。
- * query 可以是：单字、词组、完整诗句。
+ * 通用搜索：query 可以是单字、多字词组或完整诗句。
+ * 索引加载后为同步调用，< 1ms。
  */
-export async function localSearch(
+export function localSearch(
   query: string,
   maxResults = 8
-): Promise<SearchResult[]> {
+): SearchResult[] {
   const q = query.trim();
-  if (!q) return [];
+  if (!q || !_loaded || !charIndex) return [];
 
-  const index = await loadIndex();
   const results: SearchResult[] = [];
   const seenKeys = new Set<string>();
 
-  for (const poem of index) {
-    const content = poem.content;
-    for (let i = 0; i < content.length; i++) {
-      const clean = stripPunct(content[i]);
-      if (!clean || clean.length < 4) continue;
+  // ── 单字符：用倒排索引 O(匹配数) ──────────────────────────────
+  if (q.length === 1) {
+    const entries = charIndex!.get(q) ?? [];
+    for (const entry of entries) {
+      const ukey = `${entry.poem.key}:${entry.lineIndex}`;
+      if (seenKeys.has(ukey)) continue;
+      seenKeys.add(ukey);
+      results.push({
+        poem: wrapPoem(entry.poem, entry.lineIndex, entry.clean),
+        score: 100,
+      });
+      if (results.length >= maxResults) break;
+    }
+    return results;
+  }
 
-      let score = 0;
-      if (clean === q) {
-        score = 100;
-      } else if (clean.includes(q)) {
-        score = 80;
-      } else if (q.length >= 4 && clean.length >= 4) {
-        const maxDist = Math.max(clean.length, q.length) <= 9 ? 3 : 4;
-        if (Math.abs(clean.length - q.length) <= maxDist) {
-          const dist = levenshtein(clean, q);
-          if (dist <= maxDist) {
-            score = Math.max(0, 70 - dist * 10);
-          }
-        }
-      }
+  // ── 多字符：取出现次数最少的字符作为主查询键 ───────────────────
+  const chars = [...new Set(q)];
+  let primaryChar = chars[0];
+  let minSize = Infinity;
+  for (const c of chars) {
+    const size = charIndex!.get(c)?.length ?? 0;
+    if (size < minSize) { minSize = size; primaryChar = c; }
+  }
 
-      if (score > 0) {
-        const ukey = `${poem.key}:${i}`;
-        if (!seenKeys.has(ukey)) {
-          seenKeys.add(ukey);
-          results.push({
-            poem: {
-              _id: poem.key,
-              name: poem.t,
-              author: poem.a,
-              dynasty: poem.d,
-              content: poem.content,
-              note: poem.note,
-              matchedLine: content[i],
-              matchedLineIndex: i,
-            },
-            score,
-          });
-          if (results.length >= maxResults * 3) break;
-        }
+  const candidates = new Map<string, LineEntry>();
+  const entries = charIndex!.get(primaryChar) ?? [];
+  for (const entry of entries) {
+    let hasAll = true;
+    for (const c of chars) {
+      if (!entry.clean.includes(c)) { hasAll = false; break; }
+    }
+    if (hasAll) {
+      candidates.set(`${entry.poem.key}:${entry.lineIndex}`, entry);
+    }
+  }
+
+  for (const [, entry] of candidates) {
+    const clean = entry.clean;
+    let score = 0;
+    if (clean === q) {
+      score = 100;
+    } else if (clean.includes(q)) {
+      score = 80;
+    } else if (q.length >= 4) {
+      const maxDist = clean.length <= 9 ? 3 : 4;
+      if (Math.abs(clean.length - q.length) <= maxDist) {
+        const dist = levenshtein(clean, q);
+        if (dist <= maxDist) score = Math.max(0, 70 - dist * 10);
       }
     }
-    if (results.length >= maxResults * 3) break;
+    if (score > 0) {
+      const ukey = `${entry.poem.key}:${entry.lineIndex}`;
+      if (!seenKeys.has(ukey)) {
+        seenKeys.add(ukey);
+        results.push({ poem: wrapPoem(entry.poem, entry.lineIndex, entry.clean), score });
+      }
+    }
   }
 
   return results
     .sort((a, b) => b.score - a.score)
     .slice(0, maxResults);
+}
+
+/**
+ * 按字符搜索，返回包含该字的所有诗句（飞花令专用）。
+ * 同步，O(匹配数)。
+ */
+export function searchByChar(char: string, maxResults = 20): SearchResult[] {
+  if (!char.trim() || !_loaded || !charIndex) return [];
+  const entries = charIndex!.get(char) ?? [];
+  const results: SearchResult[] = [];
+  const seenKeys = new Set<string>();
+  for (const entry of entries) {
+    if (!seenKeys.has(entry.poem.key)) {
+      seenKeys.add(entry.poem.key);
+      results.push({ poem: wrapPoem(entry.poem, entry.lineIndex, entry.clean), score: 100 });
+      if (results.length >= maxResults) break;
+    }
+  }
+  return results;
+}
+
+export const searchOnline = localSearch;
+
+export function getPoemByKey(key: string): SearchResult | null {
+  if (!_loaded || !keyMap) return null;
+  let poem = keyMap.get(key) ?? keyMap.get(key.trim());
+  if (poem) return wrap(poem);
+  const colonIdx = key.trim().indexOf(":");
+  if (colonIdx !== -1) {
+    const t = key.trim().slice(0, colonIdx).trim();
+    const a = key.trim().slice(colonIdx + 1).trim();
+    poem = keyMap.get(`${t}:${a}`);
+    if (poem) return wrap(poem);
+  }
+  if (idMap) {
+    poem = idMap.get(key) ?? idMap.get(key.trim());
+    if (poem) return wrap(poem);
+  }
+  return null;
+}
+
+// ─── 工具 ─────────────────────────────────────────────────────────────────
+
+function wrap(poem: IndexedPoem): SearchResult {
+  return {
+    poem: wrapPoem(poem, 0, poem.content[0] ?? ""),
+    score: 100,
+  };
+}
+
+function wrapPoem(poem: IndexedPoem, lineIndex: number, matchedLine: string): PoemResult {
+  return {
+    _id: poem.key,
+    name: poem.t,
+    author: poem.a,
+    dynasty: poem.d,
+    content: poem.content,
+    note: poem.note,
+    matchedLine,
+    matchedLineIndex: lineIndex,
+  };
 }
 
 function levenshtein(a: string, b: string): number {
@@ -178,70 +289,4 @@ function levenshtein(a: string, b: string): number {
           ? dp[i - 1][j - 1]
           : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
   return dp[m][n];
-}
-
-// ─── 兼容别名（直接替代原 onlineSearch 模块） ────────────────────────────────
-
-export const searchOnline = localSearch;
-
-/**
- * O(1) 按 "title:author" key 精确查找一首诗。
- * 同时兼容旧版 ObjectId key（通过 idMap）。
- */
-export async function getPoemByKey(
-  key: string
-): Promise<SearchResult | null> {
-  await loadIndex();
-  if (!keyMap) return null;
-
-  // 1. 直接查 keyMap
-  let poem = keyMap.get(key);
-  if (poem) return wrap(poem);
-
-  // 2. trim 后查 keyMap
-  const trimmed = key.trim();
-  poem = keyMap.get(trimmed);
-  if (poem) return wrap(poem);
-
-  // 3. 解析 "title:author" 后重新拼接查 keyMap
-  const colonIdx = trimmed.indexOf(":");
-  if (colonIdx !== -1) {
-    const t = trimmed.slice(0, colonIdx).trim();
-    const a = trimmed.slice(colonIdx + 1).trim();
-    poem = keyMap.get(`${t}:${a}`);
-    if (poem) return wrap(poem);
-  }
-
-  // 4. 旧版 ObjectId key → 通过 idMap 查找
-  if (idMap) {
-    poem = idMap.get(key) ?? idMap.get(trimmed);
-    if (poem) return wrap(poem);
-  }
-
-  return null;
-}
-
-function wrap(poem: IndexedPoem): SearchResult {
-  return {
-    poem: {
-      _id: poem.key,
-      name: poem.t,
-      author: poem.a,
-      dynasty: poem.d,
-      content: poem.content,
-      note: poem.note,
-      matchedLine: poem.content[0] || "",
-      matchedLineIndex: 0,
-    },
-    score: 100,
-  };
-}
-
-// ─── 预加载 ───────────────────────────────────────────────────────────────
-
-let preloadStarted = false;
-export function preloadIndex(): void {
-  if (preloadStarted) return;
-  preloadStarted = true;
-  loadIndex().catch(console.error);
 }
