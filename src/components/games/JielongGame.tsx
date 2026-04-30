@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { VoiceInput } from "@/components/ui/VoiceInput";
 import { LEVEL_LABELS } from "@/lib/srs";
-import { OnlinePoemResult, searchOnline } from "@/lib/onlineSearch";
+import { OnlinePoemResult, searchOnline } from "@/lib/localSearch";
 import { loadStore, markPoemAnswered, setLevel } from "@/lib/user";
 import { stripPunctuation } from "@/lib/poems";
 

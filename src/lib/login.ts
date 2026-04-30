@@ -41,6 +41,16 @@ export function useLogin() {
     setDiscordId(localStorage.getItem(DISCORD_ID_KEY) ?? "");
   }, []);
 
+  // Re-check localStorage when the tab becomes visible again (handles Discord
+  // binding that happened in a separate browser context / manual copy-paste)
+  useEffect(() => {
+    const onVisible = () => {
+      setDiscordId(localStorage.getItem(DISCORD_ID_KEY) ?? "");
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   const copyUUID = useCallback(() => {
     if (!uuid) return;
     navigator.clipboard.writeText(uuid).then(() => {

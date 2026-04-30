@@ -6,7 +6,15 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   UserStore,
   loadStore,
@@ -31,7 +39,10 @@ interface UserContextValue {
   overview: Overview;
   setLevel: (poemId: string, level: number) => void;
   markPoemAnswered: (poemId: string) => void;
-  upsertPoemProgress: (poemId: string, updater: (p: PoemProgress) => PoemProgress) => void;
+  upsertPoemProgress: (
+    poemId: string,
+    updater: (p: PoemProgress) => PoemProgress
+  ) => void;
   getPoemProgress: (poemId: string) => PoemProgress;
 }
 
@@ -46,48 +57,52 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     return initial;
   });
 
+  // Always hold the latest store in a mutable ref so that callbacks
+  // never capture a stale reference — all mutations operate on the
+  // current value even if React hasn't re-rendered yet.
+  const storeRef = useRef<UserStore>(store);
+  storeRef.current = store;
+
+  // Sync storeRef whenever store changes (after React re-render)
+  useEffect(() => {
+    storeRef.current = store;
+  }, [store]);
+
   // Watch for localStorage changes from other tabs/windows
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === "fengyuqing_v1") {
-        _setStore(() => loadStore());
+        const fresh = loadStore();
+        _setStore(fresh);
       }
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, []);
 
-  // Functional setStore — derives new reference from prev state + localStorage
-  const setStore = useCallback((updater: (prev: UserStore) => UserStore) => {
-    _setStore((prev) => {
-      const next = updater(prev);
-      // Sync to localStorage (lib functions write in-place, ensure save)
-      return { ...next };
-    });
+  // All mutation helpers read from storeRef (always fresh) and update
+  // both the in-memory store AND localStorage.
+  const setLevel = useCallback((poemId: string, level: number) => {
+    _setLevel(storeRef.current, poemId, level);
+    _setStore((prev) => ({ ...prev }));
   }, []);
 
-  const setLevel = useCallback((poemId: string, level: number) => {
-    _setLevel(store, poemId, level);
-    // Force React to see a new reference
-    setStore((prev) => ({ ...prev }));
-  }, [store, setStore]);
-
   const markPoemAnswered = useCallback((poemId: string) => {
-    _markPoemAnswered(store, poemId);
-    setStore((prev) => ({ ...prev }));
-  }, [store, setStore]);
+    _markPoemAnswered(storeRef.current, poemId);
+    _setStore((prev) => ({ ...prev }));
+  }, []);
 
   const upsertPoemProgress = useCallback(
     (poemId: string, updater: (p: PoemProgress) => PoemProgress) => {
-      _upsertPoemProgress(store, poemId, updater);
-      setStore((prev) => ({ ...prev }));
+      _upsertPoemProgress(storeRef.current, poemId, updater);
+      _setStore((prev) => ({ ...prev }));
     },
-    [store, setStore]
+    []
   );
 
   const getPoemProgress = useCallback(
-    (poemId: string) => _getPoemProgress(store, poemId),
-    [store]
+    (poemId: string) => _getPoemProgress(storeRef.current, poemId),
+    []
   );
 
   const overview = useMemo(() => getOverview(store), [store]);
@@ -104,7 +119,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     [store, overview, setLevel, markPoemAnswered, upsertPoemProgress, getPoemProgress]
   );
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={value}>{children}</UserContext.Provider>
+  );
 }
 
 /** Hook to access the shared user store */

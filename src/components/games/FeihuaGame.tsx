@@ -32,7 +32,7 @@ interface RoundEntry {
 export function FeihuaGame() {
   const { markPoemAnswered, setLevel } = useUser();
   const [selectedChar, setSelectedChar] = useState<string>("");
-  const [phase, setPhase] = useState<"loading" | "pick" | "playing">("loading");
+  const [phase, setPhase] = useState<"pick" | "playing">("pick");
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
   const [userInput, setUserInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -43,10 +43,11 @@ export function FeihuaGame() {
   const [history, setHistory] = useState<RoundEntry[]>([]);
   const [seenPoemIds, setSeenPoemIds] = useState<Set<string>>(new Set());
   const [currentEntry, setCurrentEntry] = useState<RoundEntry | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
-  // 启动时预加载索引
+  // 预加载索引
   useEffect(() => {
-    ensureLoaded().then(() => setPhase("pick"));
+    ensureLoaded().then(() => setLoaded(true));
   }, []);
 
   /** 选字后立即搜索（同步） */
@@ -209,15 +210,19 @@ export function FeihuaGame() {
       : null
     : null;
 
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-20 text-text-muted">
+        <div className="text-center">
+          <div className="text-3xl mb-2">📜</div>
+          <p>加载诗词库...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-lg">
-      {/* 加载中 */}
-      {phase === "loading" && (
-        <div className="text-center py-10 text-text-muted animate-pulse">
-          正在加载诗词库…
-        </div>
-      )}
-
       {/* 选字阶段 */}
       {phase === "pick" && (
         <div className="space-y-6">

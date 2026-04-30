@@ -42,3 +42,10 @@ next-env.d.ts
 
 # local data copy (build artifact from data/poems.json)
 src/data/
+
+# python cache
+__pycache__/
+*.pyc
+*.pyo
+discord_bot/__pycache__/
+scripts/__pycache__/

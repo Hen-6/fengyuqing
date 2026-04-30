@@ -1,32 +1,36 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { VoiceInput } from "@/components/ui/VoiceInput";
-import { OnlinePoemResult, loadIndex } from "@/lib/localSearch";
-import { stripPunctuation } from "@/lib/poems";
+import { OnlinePoemResult, ensureLoaded, poemsArray } from "@/lib/localSearch";
 import { loadStore, markPoemAnswered } from "@/lib/user";
-import { IndexedPoem } from "@/lib/localSearch";
+
+const PUNCT_RE = /[，。？！、；：""''【】「」()（）·—–…\s.,?!'":;\[\]]+/g;
+
+function stripPunct(s: string): string {
+  return s.replace(PUNCT_RE, "");
+}
 
 const MAX_GUESSES = 15;
 const MAX_SCORE = 200;
 type CharState = "empty" | "correct" | "present" | "absent";
 
 interface Couplet {
-  poem: IndexedPoem;
-  lineIndex: number;   // 奇数句 index（0,2,4...）
-  coupletText: string; // 两句去标点合并
+  poemKey: string;
+  poemIdx: number;
+  lineIndex: number;    // 奇数句 index（0,2,4...）
+  coupletText: string;  // 两句去标点合并
   displayLine1: string; // 原始第一句（带标点）
   displayLine2: string; // 原始第二句（带标点）
-  charCount: number;   // 5 或 7
+  charCount: number;    // 5 或 7
 }
 
 interface GuessRecord {
   chars: string[];
   states: CharState[];
   display: string;
-  poem: OnlinePoemResult | null;
-  matchedLineIndex: number;
+  couplet: Couplet | null;
   isCorrect: boolean;
   hintScore: number;
 }
@@ -89,49 +93,55 @@ function calcHintScore(
   return score;
 }
 
-// ─── Couplet 索引构建（一次性） ──────────────────────────────────────────
+// ─── Couplet pool builder (called after data loads) ──────────────────────
 
-let coupletPool: Couplet[] | null = null;
-let coupletLoadPromise: Promise<Couplet[]> | null = null;
-
-async function loadCoupletPool(): Promise<Couplet[]> {
-  if (coupletPool) return coupletPool;
-  if (coupletLoadPromise) return coupletLoadPromise;
-
-  coupletLoadPromise = (async () => {
-    const index = await loadIndex();
-    const pool: Couplet[] = [];
-
-    for (const poem of index) {
-      const content = poem.content;
-      for (let j = 0; j < content.length - 1; j += 2) {
-        const l1 = stripPunctuation(content[j] ?? "");
-        const l2 = stripPunctuation(content[j + 1] ?? "");
-        if (l1.length >= 5 && l2.length >= 5 && l1.length === l2.length) {
-          pool.push({
-            poem,
-            lineIndex: j,
-            coupletText: l1 + l2,
-            displayLine1: (content[j] ?? "").trim(),
-            displayLine2: (content[j + 1] ?? "").trim(),
-            charCount: l1.length,
-          });
-        }
+function buildCoupletPool(pool: Couplet[]): Couplet[] {
+  if (pool.length > 0) return pool;
+  for (let pi = 0; pi < poemsArray.length; pi++) {
+    const poem = poemsArray[pi];
+    const content = poem.c;
+    for (let j = 0; j < content.length - 1; j += 2) {
+      const l1 = stripPunct(content[j] ?? "");
+      const l2 = stripPunct(content[j + 1] ?? "");
+      if (l1.length >= 5 && l2.length >= 5 && l1.length === l2.length) {
+        pool.push({
+          poemKey: poem.k,
+          poemIdx: pi,
+          lineIndex: j,
+          coupletText: l1 + l2,
+          displayLine1: (content[j] ?? "").trim(),
+          displayLine2: (content[j + 1] ?? "").trim(),
+          charCount: l1.length,
+        });
       }
     }
+  }
+  return pool;
+}
 
-    coupletPool = pool;
-    return pool;
-  })();
-
-  return coupletLoadPromise;
+/** 用 poemIdx + lineIndex 重新构建 OnlinePoemResult */
+function coupletToPoemResult(c: Couplet): OnlinePoemResult {
+  const poem = poemsArray[c.poemIdx];
+  const clean = stripPunct(poem.c[c.lineIndex] ?? "");
+  return {
+    _id: poem.k,
+    name: poem.t,
+    author: poem.a,
+    dynasty: poem.d,
+    content: poem.c,
+    note: poem.n,
+    matchedLine: clean,
+    matchedLineIndex: c.lineIndex,
+  };
 }
 
 // ─── 主组件 ──────────────────────────────────────────────────────────────
 
 export function XunhuaGame() {
-  const [phase, setPhase] = useState<"loading" | "playing" | "won" | "lost">("loading");
-  const [couplets, setCouplets] = useState<Couplet[]>([]);
+  const [poolRef, setPoolRef] = useState<Couplet[]>([]);
+  const [dataReady, setDataReady] = useState(false);
+
+  const [phase, setPhase] = useState<"playing" | "won" | "lost">("playing");
   const [current, setCurrent] = useState<Couplet | null>(null);
   const [guess, setGuess] = useState("");
   const [guesses, setGuesses] = useState<GuessRecord[]>([]);
@@ -144,21 +154,31 @@ export function XunhuaGame() {
   const [showConfirm, setShowConfirm] = useState<{
     guess: string;
     actual: string;
-    poem: OnlinePoemResult;
-    lineIdx: number;
+    couplet: Couplet;
   } | null>(null);
   const [floatScore, setFloatScore] = useState<number | null>(null);
   const [floatKey, setFloatKey] = useState(0);
 
   const store = loadStore();
 
-  // 加载 couplet 池
+  // 初始化：加载数据 + 构建 couplet pool
   useEffect(() => {
-    loadCoupletPool().then((pool) => {
-      setCouplets(pool);
-      if (pool.length > 0) startNewRound(pool);
+    if (dataReady) return;
+    ensureLoaded().then(() => {
+      const pool: Couplet[] = [];
+      buildCoupletPool(pool);
+      setPoolRef(pool);
+      setDataReady(true);
     });
-  }, []);
+  }, [dataReady]);
+
+  // 初始化第一题
+  useEffect(() => {
+    if (poolRef.length > 0 && !current) {
+      startNewRound(poolRef);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poolRef]);
 
   const startNewRound = useCallback((pool: Couplet[]) => {
     if (pool.length === 0) return;
@@ -176,7 +196,7 @@ export function XunhuaGame() {
   const handleSubmit = useCallback(() => {
     if (!guess.trim() || phase !== "playing" || !current) return;
 
-    const cleanGuess = stripPunctuation(guess).trim();
+    const cleanGuess = stripPunct(guess).trim();
     if (!cleanGuess) return;
 
     if (cleanGuess.length !== current.coupletText.length) {
@@ -193,8 +213,7 @@ export function XunhuaGame() {
       const newRecord: GuessRecord = {
         chars, states,
         display: cleanGuess,
-        poem: wrapPoem(current.poem),
-        matchedLineIndex: current.lineIndex,
+        couplet: current,
         isCorrect: true,
         hintScore: 0,
       };
@@ -213,7 +232,7 @@ export function XunhuaGame() {
       setPhase("won");
       setResultMsg(`恭喜答对！+${gScore}分（猜测得分），+${totalHint}分（提示得分）`);
       setResultClass("correct");
-      markPoemAnswered(store, current.poem.key);
+      markPoemAnswered(store, current.poemKey);
       setGuess("");
       return;
     }
@@ -230,8 +249,7 @@ export function XunhuaGame() {
       setShowConfirm({
         guess: cleanGuess,
         actual: answer,
-        poem: wrapPoem(current.poem),
-        lineIdx: current.lineIndex,
+        couplet: current,
       });
       return;
     }
@@ -245,8 +263,7 @@ export function XunhuaGame() {
       setShowConfirm({
         guess: cleanGuess,
         actual: answer,
-        poem: wrapPoem(current.poem),
-        lineIdx: current.lineIndex,
+        couplet: current,
       });
       return;
     }
@@ -261,8 +278,7 @@ export function XunhuaGame() {
     const newRecord: GuessRecord = {
       chars, states,
       display: cleanGuess,
-      poem: null,
-      matchedLineIndex: -1,
+      couplet: null,
       isCorrect: false,
       hintScore: hScore,
     };
@@ -305,8 +321,7 @@ export function XunhuaGame() {
     const newRecord: GuessRecord = {
       chars, states,
       display: cleanActual,
-      poem: showConfirm.poem,
-      matchedLineIndex: showConfirm.lineIdx,
+      couplet: showConfirm.couplet,
       isCorrect: true,
       hintScore: 0,
     };
@@ -319,7 +334,7 @@ export function XunhuaGame() {
     setPhase("won");
     setResultMsg(`恭喜答对！+${gScore}分（猜测得分），+${hScore}分（提示得分）`);
     setResultClass("correct");
-    if (showConfirm.poem) markPoemAnswered(store, showConfirm.poem._id);
+    markPoemAnswered(store, showConfirm.couplet.poemKey);
     setShowConfirm(null);
     setGuess("");
   }, [showConfirm, current, guesses, score, store]);
@@ -353,16 +368,8 @@ export function XunhuaGame() {
 
   // 构建提示格：当前诗句字符 + 其他诗句字符
   const hintChars = current
-    ? buildHintChars(current, guesses, couplets)
+    ? buildHintChars(current, guesses, poolRef)
     : Array(100).fill({ char: "", state: "empty" as CharState });
-
-  if (phase === "loading") {
-    return (
-      <div className="text-center py-10 text-text-muted animate-pulse">
-        正在加载诗词库…
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -402,17 +409,17 @@ export function XunhuaGame() {
                   <button
                     key={ci}
                     onClick={() => {
-                      if (g.poem) {
-                        setCardPoem(g.poem);
+                      if (g.couplet) {
+                        setCardPoem(coupletToPoemResult(g.couplet));
                         setShowCard(true);
                       }
                     }}
                     className={`
                       flex h-9 w-9 items-center justify-center rounded text-sm font-bold
                       transition-all ${guessCharClass(g.states[ci])}
-                      ${g.poem ? "cursor-pointer hover:brightness-110" : ""}
+                      ${g.couplet ? "cursor-pointer hover:brightness-110" : ""}
                     `}
-                    title={g.poem ? `查看《${g.poem.name}》` : ""}
+                    title={g.couplet ? `查看《${poemsArray[g.couplet.poemIdx].t}》` : ""}
                   >
                     {ch}
                   </button>
@@ -478,7 +485,7 @@ export function XunhuaGame() {
           {phase === "won" && current && (
             <button
               onClick={() => {
-                setCardPoem(wrapPoem(current.poem));
+                setCardPoem(coupletToPoemResult(current));
                 setShowCard(true);
               }}
               className="mt-2 text-sm text-accent hover:underline"
@@ -493,7 +500,7 @@ export function XunhuaGame() {
       <div className="flex gap-2">
         {phase !== "playing" && (
           <button
-            onClick={() => startNewRound(couplets)}
+            onClick={() => startNewRound(poolRef)}
             className="flex-1 rounded-xl bg-accent py-3 font-semibold text-white hover:bg-red-700 transition"
           >
             下一题
@@ -503,7 +510,7 @@ export function XunhuaGame() {
           <button
             onClick={() => {
               setScore(0);
-              startNewRound(couplets);
+              startNewRound(poolRef);
             }}
             className="flex-1 rounded-xl border border-border py-3 font-semibold text-ink hover:bg-paper transition"
           >
@@ -564,7 +571,7 @@ export function XunhuaGame() {
 // ─── 猜测预览（实时灰色字框） ────────────────────────────────────────────
 
 function GuessPreview({ guess, targetLength }: { guess: string; targetLength: number }) {
-  const clean = stripPunctuation(guess).trim();
+  const clean = stripPunct(guess).trim();
   const chars = clean.split("").slice(0, targetLength);
   while (chars.length < targetLength) chars.push(" ");
 
@@ -615,8 +622,8 @@ function buildHintChars(
   const otherLines: string[] = [];
   for (const cp of allCouplets) {
     if (cp === current) continue;
-    for (const l of cp.poem.content) {
-      const clean = stripPunctuation(l);
+    for (const l of poemsArray[cp.poemIdx].c) {
+      const clean = stripPunct(l);
       if (clean.length >= 4) otherLines.push(clean);
     }
   }
@@ -653,17 +660,3 @@ function buildHintChars(
   return result.slice(0, 100);
 }
 
-// ─── 工具函数 ───────────────────────────────────────────────────────────
-
-function wrapPoem(p: IndexedPoem): OnlinePoemResult {
-  return {
-    _id: p.key,
-    name: p.t,
-    author: p.a,
-    dynasty: p.d,
-    content: p.content,
-    note: p.note,
-    matchedLine: p.content[0] || "",
-    matchedLineIndex: 0,
-  };
-}

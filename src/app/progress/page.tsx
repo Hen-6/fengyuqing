@@ -7,7 +7,7 @@ import { getRankList } from "@/lib/poems";
 import { PoemProgress } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { getPoemByKey } from "@/lib/localSearch";
+import { getPoemByKeyExport as getPoemByKey } from "@/lib/localSearch";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
 
