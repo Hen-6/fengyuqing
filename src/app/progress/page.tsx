@@ -7,7 +7,9 @@ import { getRankList } from "@/lib/poems";
 import { PoemProgress } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { searchOnline, getPoemByKey } from "@/lib/localSearch";
+import { getPoemByKey } from "@/lib/localSearch";
+
+const OBJECTID_RE = /^[0-9a-f]{24}$/i;
 
 export default function ProgressPage() {
   const [store, setStore] = useState<ReturnType<typeof loadStore> | null>(null);
@@ -15,7 +17,6 @@ export default function ProgressPage() {
 
   useEffect(() => {
     setStore(loadStore());
-    // 构建 title→元数据 映射（本地极小文件）
     const list = getRankList();
     const map = new Map<string, { t: string; a: string; d: string }>();
     for (const p of list) {
@@ -26,8 +27,10 @@ export default function ProgressPage() {
 
   if (!store) return null;
 
-  // 从 store.poems 提取已记录的诗
-  const practiced = Object.values(store.poems);
+  // 从 store.poems 提取已记录的诗，跳过旧 ObjectId key
+  const practiced = Object.values(store.poems).filter(
+    (p) => !OBJECTID_RE.test(p.poemId)
+  );
 
   type PoemEntry = { key: string; title: string; author: string; dynasty: string; p: PoemProgress };
   const byLevel: Record<string, PoemEntry[]> = {
@@ -47,10 +50,13 @@ export default function ProgressPage() {
     });
   }
 
-  // 排序：按标题
   for (const lvl of Object.keys(byLevel)) {
     byLevel[lvl].sort((a, b) => a.title.localeCompare(b.title));
   }
+
+  const oldEntryCount = Object.values(store.poems).filter(
+    (p) => OBJECTID_RE.test(p.poemId)
+  ).length;
 
   return (
     <div className="min-h-screen paper-texture px-6 py-8">
@@ -59,6 +65,15 @@ export default function ProgressPage() {
           <Link href="/" className="text-2xl text-text-muted hover:text-accent transition">←</Link>
           <h1 className="text-xl font-bold text-ink">学习详情</h1>
         </header>
+
+        {oldEntryCount > 0 && (
+          <div className="rounded-xl border border-yellow-400/40 bg-yellow-50 p-4 text-sm text-yellow-800">
+            <p>有 <strong>{oldEntryCount}</strong> 条旧版数据因格式变更无法迁移，已忽略。</p>
+            <p className="mt-1 text-xs text-yellow-600">
+              可在「设置」中重置进度以清除旧数据。
+            </p>
+          </div>
+        )}
 
         {practiced.length === 0 && (
           <p className="text-center text-text-muted py-8">
@@ -94,16 +109,15 @@ export default function ProgressPage() {
 
 function PoemEntryRow({ item }: { item: { key: string; title: string; author: string; dynasty: string } }) {
   const [showCard, setShowCard] = useState(false);
-  const [poemData, setPoemData] = useState<Awaited<ReturnType<typeof searchOnline>>[0] | null>(null);
+  const [poemData, setPoemData] = useState<Awaited<ReturnType<typeof getPoemByKey>>>(null);
   const [loading, setLoading] = useState(false);
 
   const handleClick = async () => {
     if (showCard) { setShowCard(false); return; }
     setLoading(true);
     setShowCard(true);
-    // 用 key（title:author）直接获取，不用搜索
     const result = await getPoemByKey(item.key);
-    setPoemData(result ?? null);
+    setPoemData(result);
     setLoading(false);
   };
 
@@ -124,6 +138,9 @@ function PoemEntryRow({ item }: { item: { key: string; title: string; author: st
         <div className="rounded-xl border border-border bg-surface p-4">
           {loading && <p className="text-center text-text-muted text-sm animate-pulse">加载中…</p>}
           {poemData && <OnlinePoemCard result={poemData.poem} />}
+          {!loading && !poemData && (
+            <p className="text-center text-text-muted text-sm">未找到诗词内容</p>
+          )}
         </div>
       )}
     </>

@@ -174,10 +174,13 @@ export function setLevel(store: UserStore, poemId: string, level: number): void 
 
 /** 初始化所有诗为 level 1（引导结束后调用） */
 export function initializeAllPoems(store: UserStore): void {
+  // 保护现有进度：已有记录的诗不覆盖
+  let added = 0;
   for (const poem of getRankList()) {
     const id = normId(poem.t, poem.a);
     if (!store.poems[id]) {
       store.poems[id] = createInitialProgress(id);
+      added++;
     }
   }
   store.initialized = true;

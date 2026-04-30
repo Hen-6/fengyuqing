@@ -40,6 +40,8 @@ export interface IndexedPoem {
 // ─── 内存缓存 ───────────────────────────────────────────────────────────────
 
 let poemsIndex: IndexedPoem[] | null = null;
+let keyMap: Map<string, IndexedPoem> | null = null;   // O(1) lookup by key
+let idMap: Map<string, IndexedPoem> | null = null;    // O(1) lookup by id (yxcs _id)
 let loadPromise: Promise<IndexedPoem[]> | null = null;
 
 const PUNCT_RE = /[，。？！、；：""''【】「」()（）·—–…\s.,?!'":;\[\]]+/g;
@@ -52,7 +54,7 @@ function stripPunct(s: string): string {
   return s.replace(PUNCT_RE, "");
 }
 
-async function loadIndex(): Promise<IndexedPoem[]> {
+export async function loadIndex(): Promise<IndexedPoem[]> {
   if (poemsIndex) return poemsIndex;
   if (loadPromise) return loadPromise;
 
@@ -71,15 +73,26 @@ async function loadIndex(): Promise<IndexedPoem[]> {
       note: string;
     }> = await resp.json();
 
-    poemsIndex = data.map((p) => ({
-      key: `${p.t.trim()}:${p.a.trim()}`,
-      r: p.r,
-      t: p.t,
-      a: p.a,
-      d: p.d,
-      content: (p.content || []).map(cleanHtml),
-      note: cleanHtml(p.note || ""),
-    }));
+    poemsIndex = [];
+    keyMap = new Map();
+    idMap = new Map();
+
+    for (const p of data) {
+      const poem: IndexedPoem = {
+        key: `${p.t.trim()}:${p.a.trim()}`,
+        r: p.r,
+        t: p.t,
+        a: p.a,
+        d: p.d,
+        content: (p.content || []).map(cleanHtml),
+        note: cleanHtml(p.note || ""),
+      };
+      poemsIndex.push(poem);
+      keyMap.set(poem.key, poem);
+      // 旧版 poems.json 用 id 字段，兼容 ObjectId 风格 id
+      if (p.id) idMap.set(p.id, poem);
+    }
+
     return poemsIndex;
   })();
 
@@ -171,32 +184,57 @@ function levenshtein(a: string, b: string): number {
 
 export const searchOnline = localSearch;
 
+/**
+ * O(1) 按 "title:author" key 精确查找一首诗。
+ * 同时兼容旧版 ObjectId key（通过 idMap）。
+ */
 export async function getPoemByKey(
   key: string
 ): Promise<SearchResult | null> {
-  const index = await loadIndex();
-  const [t, ...rest] = key.split(":");
-  const a = rest.join(":");
-  const target = `${t}:${a}`.trim();
+  await loadIndex();
+  if (!keyMap) return null;
 
-  for (const poem of index) {
-    if (poem.key === target) {
-      return {
-        poem: {
-          _id: poem.key,
-          name: poem.t,
-          author: poem.a,
-          dynasty: poem.d,
-          content: poem.content,
-          note: poem.note,
-          matchedLine: poem.content[0] || "",
-          matchedLineIndex: 0,
-        },
-        score: 100,
-      };
-    }
+  // 1. 直接查 keyMap
+  let poem = keyMap.get(key);
+  if (poem) return wrap(poem);
+
+  // 2. trim 后查 keyMap
+  const trimmed = key.trim();
+  poem = keyMap.get(trimmed);
+  if (poem) return wrap(poem);
+
+  // 3. 解析 "title:author" 后重新拼接查 keyMap
+  const colonIdx = trimmed.indexOf(":");
+  if (colonIdx !== -1) {
+    const t = trimmed.slice(0, colonIdx).trim();
+    const a = trimmed.slice(colonIdx + 1).trim();
+    poem = keyMap.get(`${t}:${a}`);
+    if (poem) return wrap(poem);
   }
+
+  // 4. 旧版 ObjectId key → 通过 idMap 查找
+  if (idMap) {
+    poem = idMap.get(key) ?? idMap.get(trimmed);
+    if (poem) return wrap(poem);
+  }
+
   return null;
+}
+
+function wrap(poem: IndexedPoem): SearchResult {
+  return {
+    poem: {
+      _id: poem.key,
+      name: poem.t,
+      author: poem.a,
+      dynasty: poem.d,
+      content: poem.content,
+      note: poem.note,
+      matchedLine: poem.content[0] || "",
+      matchedLineIndex: 0,
+    },
+    score: 100,
+  };
 }
 
 // ─── 预加载 ───────────────────────────────────────────────────────────────
