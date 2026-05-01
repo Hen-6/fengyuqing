@@ -3,8 +3,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { VoiceInput } from "@/components/ui/VoiceInput";
-import { OnlinePoemResult, ensureLoaded, poemsArray } from "@/lib/localSearch";
+import { OnlinePoemResult, IndexedPoem } from "@/lib/localSearch";
 import { loadStore, markPoemAnswered } from "@/lib/user";
+import { usePoems } from "@/components/PoemsContext";
 
 const PUNCT_RE = /[，。？！、；：""''【】「」()（）·—–…\s.,?!'":;\[\]]+/g;
 
@@ -93,12 +94,12 @@ function calcHintScore(
   return score;
 }
 
-// ─── Couplet pool builder (called after data loads) ──────────────────────
+// ─── Couplet pool builder (receives poems as param) ──────────────────────
 
-function buildCoupletPool(pool: Couplet[]): Couplet[] {
-  if (pool.length > 0) return pool;
-  for (let pi = 0; pi < poemsArray.length; pi++) {
-    const poem = poemsArray[pi];
+function buildCoupletPool(poems: IndexedPoem[]): Couplet[] {
+  const pool: Couplet[] = [];
+  for (let pi = 0; pi < poems.length; pi++) {
+    const poem = poems[pi];
     const content = poem.c;
     for (let j = 0; j < content.length - 1; j += 2) {
       const l1 = stripPunct(content[j] ?? "");
@@ -120,8 +121,8 @@ function buildCoupletPool(pool: Couplet[]): Couplet[] {
 }
 
 /** 用 poemIdx + lineIndex 重新构建 OnlinePoemResult */
-function coupletToPoemResult(c: Couplet): OnlinePoemResult {
-  const poem = poemsArray[c.poemIdx];
+function coupletToPoemResult(c: Couplet, poems: IndexedPoem[]): OnlinePoemResult {
+  const poem = poems[c.poemIdx];
   const clean = stripPunct(poem.c[c.lineIndex] ?? "");
   return {
     _id: poem.k,
@@ -138,8 +139,8 @@ function coupletToPoemResult(c: Couplet): OnlinePoemResult {
 // ─── 主组件 ──────────────────────────────────────────────────────────────
 
 export function XunhuaGame() {
-  const [poolRef, setPoolRef] = useState<Couplet[]>([]);
-  const [dataReady, setDataReady] = useState(false);
+  const { poems, loaded } = usePoems();
+  const [pool, setPool] = useState<Couplet[]>([]);
 
   const [phase, setPhase] = useState<"playing" | "won" | "lost">("playing");
   const [current, setCurrent] = useState<Couplet | null>(null);
@@ -161,28 +162,26 @@ export function XunhuaGame() {
 
   const store = loadStore();
 
-  // 初始化：加载数据 + 构建 couplet pool
+  // 数据加载完成后构建 pool
   useEffect(() => {
-    if (dataReady) return;
-    ensureLoaded().then(() => {
-      const pool: Couplet[] = [];
-      buildCoupletPool(pool);
-      setPoolRef(pool);
-      setDataReady(true);
-    });
-  }, [dataReady]);
+    if (!loaded || poems.length === 0) return;
+    if (pool.length > 0) return;
+    const p = buildCoupletPool(poems);
+    setPool(p);
+  }, [loaded, poems]);
 
   // 初始化第一题
   useEffect(() => {
-    if (poolRef.length > 0 && !current) {
-      startNewRound(poolRef);
+    if (pool.length > 0 && !current) {
+      startNewRound(pool);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poolRef]);
+  }, [pool]);
 
-  const startNewRound = useCallback((pool: Couplet[]) => {
-    if (pool.length === 0) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
+  const startNewRound = useCallback((poolArg?: Couplet[]) => {
+    const p = poolArg ?? pool;
+    if (p.length === 0) return;
+    const pick = p[Math.floor(Math.random() * p.length)];
     setCurrent(pick);
     setGuess("");
     setGuesses([]);
@@ -191,7 +190,7 @@ export function XunhuaGame() {
     setResultMsg("");
     setResultClass("");
     setShowConfirm(null);
-  }, []);
+  }, [pool]);
 
   const handleSubmit = useCallback(() => {
     if (!guess.trim() || phase !== "playing" || !current) return;
@@ -368,8 +367,17 @@ export function XunhuaGame() {
 
   // 构建提示格：当前诗句字符 + 其他诗句字符
   const hintChars = current
-    ? buildHintChars(current, guesses, poolRef)
+    ? buildHintChars(current, guesses, pool, poems)
     : Array(100).fill({ char: "", state: "empty" as CharState });
+
+  if (!loaded) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-text-muted">
+        <div className="h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin mb-3" />
+        <p className="text-sm">加载诗词库…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -410,7 +418,7 @@ export function XunhuaGame() {
                     key={ci}
                     onClick={() => {
                       if (g.couplet) {
-                        setCardPoem(coupletToPoemResult(g.couplet));
+                        setCardPoem(coupletToPoemResult(g.couplet, poems));
                         setShowCard(true);
                       }
                     }}
@@ -419,7 +427,7 @@ export function XunhuaGame() {
                       transition-all ${guessCharClass(g.states[ci])}
                       ${g.couplet ? "cursor-pointer hover:brightness-110" : ""}
                     `}
-                    title={g.couplet ? `查看《${poemsArray[g.couplet.poemIdx].t}》` : ""}
+                    title={g.couplet ? `查看《${poems[g.couplet.poemIdx].t}》` : ""}
                   >
                     {ch}
                   </button>
@@ -485,7 +493,7 @@ export function XunhuaGame() {
           {phase === "won" && current && (
             <button
               onClick={() => {
-                setCardPoem(coupletToPoemResult(current));
+                setCardPoem(coupletToPoemResult(current, poems));
                 setShowCard(true);
               }}
               className="mt-2 text-sm text-accent hover:underline"
@@ -500,7 +508,7 @@ export function XunhuaGame() {
       <div className="flex gap-2">
         {phase !== "playing" && (
           <button
-            onClick={() => startNewRound(poolRef)}
+            onClick={() => startNewRound(pool)}
             className="flex-1 rounded-xl bg-accent py-3 font-semibold text-white hover:bg-red-700 transition"
           >
             下一题
@@ -510,7 +518,7 @@ export function XunhuaGame() {
           <button
             onClick={() => {
               setScore(0);
-              startNewRound(poolRef);
+              startNewRound(pool);
             }}
             className="flex-1 rounded-xl border border-border py-3 font-semibold text-ink hover:bg-paper transition"
           >
@@ -603,7 +611,8 @@ interface HintChar { char: string; state: CharState }
 function buildHintChars(
   current: Couplet,
   guesses: GuessRecord[],
-  allCouplets: Couplet[]
+  allCouplets: Couplet[],
+  poems: IndexedPoem[]
 ): HintChar[] {
   // 目标字集合
   const targetChars = new Set(current.coupletText.split(""));
@@ -622,7 +631,7 @@ function buildHintChars(
   const otherLines: string[] = [];
   for (const cp of allCouplets) {
     if (cp === current) continue;
-    for (const l of poemsArray[cp.poemIdx].c) {
+    for (const l of poems[cp.poemIdx].c) {
       const clean = stripPunct(l);
       if (clean.length >= 4) otherLines.push(clean);
     }

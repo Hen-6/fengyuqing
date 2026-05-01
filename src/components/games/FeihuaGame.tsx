@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { CharPicker } from "@/components/ui/CharPicker";
 import { VoiceInput } from "@/components/ui/VoiceInput";
-import { OnlinePoemResult, searchOnline, searchByChar, ensureLoaded } from "@/lib/localSearch";
+import { OnlinePoemResult, searchOnline, searchByChar } from "@/lib/localSearch";
 import { useUser } from "@/lib/userContext";
+import { usePoems } from "@/components/PoemsContext";
 
 interface BotPoem {
   poem: OnlinePoemResult;
@@ -31,6 +32,7 @@ interface RoundEntry {
 
 export function FeihuaGame() {
   const { markPoemAnswered, setLevel } = useUser();
+  const { loaded } = usePoems();
   const [selectedChar, setSelectedChar] = useState<string>("");
   const [phase, setPhase] = useState<"pick" | "playing">("pick");
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
@@ -43,12 +45,6 @@ export function FeihuaGame() {
   const [history, setHistory] = useState<RoundEntry[]>([]);
   const [seenPoemIds, setSeenPoemIds] = useState<Set<string>>(new Set());
   const [currentEntry, setCurrentEntry] = useState<RoundEntry | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  // 预加载索引
-  useEffect(() => {
-    ensureLoaded().then(() => setLoaded(true));
-  }, []);
 
   /** 选字后立即搜索（同步） */
   const selectChar = useCallback((char: string) => {
