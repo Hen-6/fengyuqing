@@ -60,7 +60,10 @@ function cleanHtml(text: string): string {
 }
 
 async function _doLoad(): Promise<void> {
-  const raw = await fetch("/data/poems.json").then(r => r.text());
+  // GitHub Pages 部署在子目录，poems.json 也在同一子目录下
+  const base = typeof window !== "undefined" ? window.location.pathname.replace(/\/[^/]*$/, "") : "";
+  const url = `${base}/data/poems.json`;
+  const raw = await fetch(url).then(r => r.text());
   const poemsRaw = JSON.parse(raw) as Array<{
     r: number; t: string; a: string; d: string;
     id?: string; content?: string[]; note?: string;
