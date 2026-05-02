@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { CharPicker } from "@/components/ui/CharPicker";
 import { VoiceInput } from "@/components/ui/VoiceInput";
-import { OnlinePoemResult, searchOnline, searchByChar } from "@/lib/localSearch";
+import { OnlinePoemResult, searchByChar, searchByLine } from "@/lib/localSearch";
 import { useUser } from "@/lib/userContext";
 import { usePoems } from "@/components/PoemsContext";
 
@@ -108,13 +108,13 @@ export function FeihuaGame() {
   const submitText = useCallback((text: string) => {
     const input = text.trim();
     if (!input) return;
-    if (input.length < 4) {
+    if (input.replace(/[，。、；：！!？?\s.,?!'":;「」『』【】（）()·—–\-…\[\]]/g, "").length < 4) {
       setFeedback({ ok: false, msg: "请输入至少4个字" });
       return;
     }
 
-    // 同步搜索
-    const hits = searchOnline(input, 5);
+    // 句级搜索（支持逗号分隔的短句）
+    const hits = searchByLine(input, 5);
     if (hits.length === 0) {
       setFeedback({ ok: false, msg: "诗句不在库中" });
       return;
@@ -127,11 +127,13 @@ export function FeihuaGame() {
     markPoemAnswered(`${hit.poem.name.trim()}:${hit.poem.author.trim()}`);
     setShowCard(true);
 
+    // 展示命中的原句（含标点）
+    const matchedRawLine = hit.poem.content[hit.poem.matchedLineIndex] || hit.poem.matchedLine;
     const entry: RoundEntry = {
       char: selectedChar,
       botPoem: botPoem!,
       userPoem: hit.poem,
-      userLine: input,
+      userLine: matchedRawLine,
       skipped: false,
     };
     setHistory((prev) => [entry, ...prev]);

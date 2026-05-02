@@ -219,6 +219,74 @@ export function getPoemByKeyExport(key: string): SearchResult | null {
 export const localSearch = searchOnline;
 export { poemsArray };
 
+// ─── 句级搜索（支持逗号分隔的短句） ─────────────────────────────────────────
+
+const SHORT_PUNCT_RE = /[，、；：]/;
+
+function normalize(s: string): string {
+  return s.replace(SHORT_PUNCT_RE, "").trim();
+}
+
+/**
+ * 将用户输入拆分为"小句"（以中文逗号/顿号/分号/冒号分隔），
+ * 每小句 ≥4 字即为有效句。
+ * 返回所有有效小句的组合（单句 + 连续两短句 + ...）
+ */
+function splitIntoClauses(input: string): string[] {
+  const raw = input.trim();
+  if (!raw) return [];
+
+  // 先检查完整句子（可能含有句号、感叹号、问号结尾）
+  const whole = normalize(raw);
+  if (whole.length >= 4) return [whole];
+
+  // 按短句分隔符拆分为小句
+  const parts = raw.split(SHORT_PUNCT_RE).map(normalize).filter((s) => s.length >= 4);
+  return parts;
+}
+
+/**
+ * 在数据库中搜索用户输入的句级匹配。
+ * 优先级：
+ * 1. 完整输入去标点精确匹配某行
+ * 2. 逗号分隔的每个小句单独匹配
+ * 3. 连续两个短句合并后匹配
+ */
+export function searchByLine(input: string, maxResults = 5): SearchResult[] {
+  if (!isLoaded() || !input.trim()) return [];
+
+  const clauses = splitIntoClauses(input);
+  if (clauses.length === 0) return [];
+
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+
+  for (const clause of clauses) {
+    for (let pi = 0; pi < poemsArray.length; pi++) {
+      const poem = poemsArray[pi];
+      const ukey = poem.k ?? "";
+      if (seen.has(ukey)) continue;
+
+      for (let li = 0; li < poem.c.length; li++) {
+        const clean = normalize(poem.c[li]);
+        if (clean === clause) {
+          seen.add(ukey);
+          results.push({ poem: wrapPoem(poem, li, poem.c[li]), score: 100 });
+          break;
+        }
+      }
+      if (results.length >= maxResults) break;
+    }
+    if (results.length >= maxResults) break;
+  }
+
+  // 仍未命中 → 降级到词组搜索（searchOnline）
+  if (results.length === 0) {
+    return searchOnline(input, maxResults);
+  }
+  return results;
+}
+
 export function getPoemIdx(key: string): number | undefined {
   return poemsMapData[key];
 }
