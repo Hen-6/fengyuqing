@@ -73,7 +73,7 @@ body::before {
 
 /* 山水背景装饰 */
 .ink-bg {
-  background-image: url("/ink-bg.svg");
+  background-image: url("/fengyuqing/ink-bg.svg");
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
@@ -81,7 +81,7 @@ body::before {
 
 /* 竹韵边饰 */
 .bamboo-border {
-  background-image: url("/bamboo.svg");
+  background-image: url("/fengyuqing/bamboo.svg");
   background-repeat: repeat-y;
   background-position: right top;
   background-size: 120px auto;
@@ -89,7 +89,7 @@ body::before {
 
 /* 水波底纹 */
 .wave-border {
-  background-image: url("/cloud-wave.svg");
+  background-image: url("/fengyuqing/cloud-wave.svg");
   background-repeat: no-repeat;
   background-position: bottom;
   background-size: 100% auto;
