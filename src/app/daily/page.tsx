@@ -5,7 +5,7 @@ import Link from "next/link";
 import { loadStore, advanceDailyRank } from "@/lib/user";
 import { getDailyEntry } from "@/lib/poems";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { searchOnline, type SearchResult } from "@/lib/localSearch";
+import { searchOnline, ensureLoaded, type SearchResult } from "@/lib/localSearch";
 
 export default function DailyPage() {
   const [rank, setRank] = useState(0);
@@ -20,11 +20,12 @@ export default function DailyPage() {
     const entry = getDailyEntry(newRank);
     setEntry(entry);
 
-    // 同步搜索
-    const hits = searchOnline(entry.t, 3);
-    const hit = hits.find((h) => h.poem.name === entry.t) ?? hits[0];
-    if (hit) setPoemResult(hit);
-    setLoading(false);
+    ensureLoaded().then(() => {
+      const hits = searchOnline(entry.t, 3);
+      const hit = hits.find((h) => h.poem.name === entry.t) ?? hits[0];
+      if (hit) setPoemResult(hit);
+      setLoading(false);
+    });
   }, []);
 
   if (loading) {

@@ -420,6 +420,48 @@ def stream_poems_all(seed_set: set[str], seed_list: list[str]) -> list[dict]:
     sorted_poems = sorted(matched.values(), key=lambda p: p["_rank"])
     return sorted_poems
 
+# ─── 输出格式 ────────────────────────────────────────────────────────────
+
+def short_poem(p: dict, rank: int) -> dict:
+    """
+    转换为 TypeScript localSearch.ts 期望的短字段格式。
+    字段：r=rank, t=title, a=author, d=dynasty, id, c=cleanLines, n=note
+    """
+    return {
+        "r": rank,
+        "t": p["title"],
+        "a": p["author"],
+        "d": p["dynasty"],
+        "id": p.get("id", ""),
+        # c: 去标点后的所有诗句（去重），localSearch.ts 内部使用
+        "c": p.get("cleanLines", []),
+        "n": p.get("note", ""),
+    }
+
+
+def build_char_index(poems: list[dict]) -> dict[str, list[int]]:
+    """
+    预建字符倒排索引：char → [poemIdx1, poemIdx2, ...]
+    每首诗的每句中所有去重汉字都加入索引。
+    """
+    char_index: dict[str, list[int]] = {}
+    total = len(poems)
+    for idx, p in enumerate(poems):
+        if idx % 5000 == 0:
+            print(f"  建索引进度：{idx}/{total}")
+        chars = set()
+        for line in p.get("cleanLines", []):
+            for c in line:
+                if "\u4e00" <= c <= "\u9fff":
+                    chars.add(c)
+        for ch in chars:
+            if ch not in char_index:
+                char_index[ch] = []
+            char_index[ch].append(idx)
+    print(f"  建索引完成：{total}/{total}，共 {len(char_index)} 个不同汉字")
+    return char_index
+
+
 # ─── 主逻辑 ────────────────────────────────────────────────────────────────
 
 def main():
@@ -440,15 +482,26 @@ def main():
         p["rank"] = i
         p.pop("_rank", None)
 
-    # 4. 写输出
+    # 4. 预建倒排索引
+    print(f"\n构建字符倒排索引...")
+    char_index = build_char_index(poems)
+
+    # 5. 写 poems.json（短字段格式）
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    poems_short = [short_poem(p, p["rank"]) for p in poems]
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(poems, f, ensure_ascii=False, indent=2)
+        json.dump(poems_short, f, ensure_ascii=False, indent=2)
+
+    # 6. 写 poems.index.json（倒排索引）
+    index_file = DATA_DIR / "poems.index.json"
+    with open(index_file, "w", encoding="utf-8") as f:
+        json.dump(char_index, f, ensure_ascii=False)
 
     print(f"\n{'=' * 60}")
-    print(f"✅ 写入 {len(poems)} 首诗 → {OUTPUT_FILE}")
+    print(f"✅ poems.json      → {OUTPUT_FILE}  ({len(poems_short)} 首)")
+    print(f"✅ poems.index.json → {index_file}  ({len(char_index)} 个汉字)")
 
-    # 5. 统计类型分布
+    # 7. 统计类型分布
     from collections import Counter
     type_dist = Counter(p.get("type", "") for p in poems)
     print(f"\n类型分布：")

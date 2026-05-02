@@ -7,7 +7,7 @@ import { getRankList } from "@/lib/poems";
 import { PoemProgress } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { getPoemByKeyExport as getPoemByKey } from "@/lib/localSearch";
+import { getPoemByKeyExport as getPoemByKey, ensureLoaded } from "@/lib/localSearch";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
 
@@ -116,7 +116,8 @@ function PoemEntryRow({ item }: { item: { key: string; title: string; author: st
     if (showCard) { setShowCard(false); return; }
     setLoading(true);
     setShowCard(true);
-    const result = await getPoemByKey(item.key);
+    await ensureLoaded();
+    const result = getPoemByKey(item.key);
     setPoemData(result);
     setLoading(false);
   };
