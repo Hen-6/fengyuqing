@@ -49,3 +49,6 @@ __pycache__/
 *.pyo
 discord_bot/__pycache__/
 scripts/__pycache__/
+
+# downloaded data cache
+data/ci300_cache.json

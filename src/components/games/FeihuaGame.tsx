@@ -11,7 +11,7 @@ import { usePoems } from "@/components/PoemsContext";
 interface BotPoem {
   poem: OnlinePoemResult;
   lineIndex: number;
-  cleanLine: string;
+  rawLine: string;
 }
 
 function cleanHtml(text: string): string {
@@ -88,7 +88,7 @@ export function FeihuaGame() {
     }
 
     const chosen = lineChoices[Math.floor(Math.random() * lineChoices.length)];
-    const newBotPoem = { poem: pick.poem, lineIndex: chosen.idx, cleanLine: chosen.raw };
+    const newBotPoem = { poem: pick.poem, lineIndex: chosen.idx, rawLine: chosen.raw };
     setBotPoem(newBotPoem);
     setCurrentEntry({ char, botPoem: newBotPoem, userPoem: null, userLine: "", skipped: false });
     setPhase("playing");
@@ -254,7 +254,7 @@ export function FeihuaGame() {
                       关键字「{entry.char}」
                       {entry.skipped && <span className="ml-2 text-present">已跳过</span>}
                     </div>
-                    <div className="text-text-muted text-xs">系统出：{entry.botPoem.cleanLine}</div>
+                    <div className="text-text-muted text-xs">系统出：{entry.botPoem.rawLine}</div>
                     {entry.userLine && (
                       <div className="text-accent text-xs mt-0.5">← 你接：{entry.userLine}</div>
                     )}
@@ -293,7 +293,7 @@ export function FeihuaGame() {
               <p className="text-xs text-text-muted mb-2">
                 请接出含「{selectedChar}」的诗句
               </p>
-              <div className="text-lg text-ink leading-relaxed">{botPoem.cleanLine}</div>
+              <div className="text-lg text-ink leading-relaxed">{botPoem.rawLine}</div>
               <div className="mt-2 flex items-center justify-between">
                 <p className="text-xs text-text-muted">
                   来自《{botPoem.poem.name}》— {botPoem.poem.author}
@@ -426,7 +426,7 @@ export function FeihuaGame() {
                       关键字「{entry.char}」
                       {entry.skipped && <span className="ml-2 text-present">已跳过</span>}
                     </div>
-                    <div className="text-text-muted text-xs">系统出：{entry.botPoem.cleanLine}</div>
+                    <div className="text-text-muted text-xs">系统出：{entry.botPoem.rawLine}</div>
                     {entry.userLine && (
                       <div className="text-accent text-xs mt-0.5">← 你接：{entry.userLine}</div>
                     )}

@@ -11,7 +11,12 @@
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface IndexedPoem {
-  r: number; t: string; a: string; d: string; id: string; c: string[]; n: string;
+  r: number; t: string; a: string; d: string; id: string;
+  /** 带标点原始句（搜索和展示用） */
+  p: string[];
+  /** 去标点句（索引用） */
+  c: string[];
+  n: string;
   /** key = "title:author" */
   k: string;
 }
@@ -88,7 +93,7 @@ function wrapPoem(poem: IndexedPoem, lineIdx: number, matchedLine: string): Poem
     name: poem.t,
     author: poem.a,
     dynasty: poem.d,
-    content: poem.c,
+    content: poem.p,  // 返回带标点原始句，供展示
     note: poem.n,
     matchedLine,
     matchedLineIndex: lineIdx,
@@ -110,11 +115,11 @@ function searchByCharImpl(char: string, maxResults: number): SearchResult[] {
     if (seen.has(ukey)) continue;
     seen.add(ukey);
 
-    let matchedLine = poem.c[0] ?? "";
+    let matchedLine = poem.p[0] ?? "";   // 带标点原始句
     let matchedLineIdx = 0;
-    for (let li = 0; li < poem.c.length; li++) {
-      if (stripPunct(poem.c[li]).includes(char)) {
-        matchedLine = stripPunct(poem.c[li]);
+    for (let li = 0; li < poem.p.length; li++) {
+      if (stripPunct(poem.p[li]).includes(char)) {
+        matchedLine = poem.p[li];
         matchedLineIdx = li;
         break;
       }
@@ -139,8 +144,9 @@ function searchByMultiChar(query: string, maxResults: number): SearchResult[] {
     const ukey = poem.k ?? "";
     if (seen.has(ukey)) continue;
 
-    for (let li = 0; li < poem.c.length; li++) {
-      const clean = stripPunct(poem.c[li]);
+    for (let li = 0; li < poem.p.length; li++) {
+      const raw = poem.p[li];
+      const clean = stripPunct(raw);
       if (clean.length < 4) continue;
 
       let hasAll = true;
@@ -155,7 +161,7 @@ function searchByMultiChar(query: string, maxResults: number): SearchResult[] {
 
       if (score > 0) {
         seen.add(ukey);
-        results.push({ poem: wrapPoem(poem, li, clean), score });
+        results.push({ poem: wrapPoem(poem, li, raw), score });  // 返回带标点原始句
         break;
       }
     }
@@ -184,17 +190,18 @@ export function searchByLine(input: string, maxResults = 5): SearchResult[] {
   const seen = new Set<string>();
   const results: SearchResult[] = [];
 
+  // 在带标点的原始句中搜索（对用户输入去标点后做等值匹配）
   for (const clause of clauses) {
     for (let pi = 0; pi < poemsArray.length; pi++) {
       const poem = poemsArray[pi];
       const ukey = poem.k ?? "";
       if (seen.has(ukey)) continue;
 
-      for (let li = 0; li < poem.c.length; li++) {
-        const clean = normalize(poem.c[li]);
+      for (let li = 0; li < poem.p.length; li++) {
+        const clean = normalize(poem.p[li]);  // 原始句去标点后比较
         if (clean === clause) {
           seen.add(ukey);
-          results.push({ poem: wrapPoem(poem, li, poem.c[li]), score: 100 });
+          results.push({ poem: wrapPoem(poem, li, poem.p[li]), score: 100 });  // 返回带标点原始句
           break;
         }
       }
@@ -238,7 +245,7 @@ export function getPoemByKeyExport(key: string): SearchResult | null {
   if (idx === undefined) return null;
   const poem = poemsArray[idx];
   if (!poem) return null;
-  return { poem: wrapPoem(poem, 0, poem.c[0] ?? ""), score: 100 };
+  return { poem: wrapPoem(poem, 0, poem.p[0] ?? ""), score: 100 };
 }
 
 export function getPoemIdx(key: string): number | undefined {
