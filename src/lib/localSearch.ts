@@ -67,10 +67,11 @@ async function _doLoad(): Promise<void> {
       : "";
   const dataBase = `${base}/data`;
 
-  // 并行加载 poems.json + 预建倒排索引（gzip）
-  const [poemsText, idxResponse] = await Promise.all([
+  // 并行加载 poems.json + 预建倒排索引
+  // poems.index.json 会被 GitHub Pages 服务器自动 gzip 压缩（约 17MB → 5MB 传输）
+  const [poemsText, idxText] = await Promise.all([
     fetch(`${dataBase}/poems.json`).then((r) => r.text()),
-    fetch(`${dataBase}/poems.index.json.gz`).then((r) => r.arrayBuffer()),
+    fetch(`${dataBase}/poems.index.json`).then((r) => r.text()),
   ]);
 
   // 解析 poems.json
@@ -95,17 +96,7 @@ async function _doLoad(): Promise<void> {
     poemsMapData[poemsArray[i].k] = i;
   }
 
-  // 直接加载预建倒排索引（gzip 压缩，浏览器 DecompressionStream 解压）
-  const ds = new DecompressionStream("gzip");
-  const idxText = await new Response(
-    new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array(idxResponse));
-        controller.close();
-      },
-    })
-      .pipeThrough(ds)
-  ).text();
+  // 解析预建倒排索引
   const charIndexRaw: Record<string, number[]> = JSON.parse(idxText);
   charIndex = new Map(Object.entries(charIndexRaw));
 
