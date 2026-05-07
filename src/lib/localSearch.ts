@@ -150,11 +150,13 @@ function searchByCharImpl(char: string, maxResults: number): SearchResult[] {
 /** 多字/词组搜索：全表扫描 */
 function searchByMultiChar(query: string, maxResults: number): SearchResult[] {
   if (!query.trim()) return [];
-  const q = query.trim();
+  const q = stripPunct(query.trim()); // 用户输入去标点后匹配
+  if (q.length < 2) return [];
   const chars = [...new Set(q)];
   const results: SearchResult[] = [];
   const seen = new Set<string>();
 
+  outer:
   for (let pi = 0; pi < poemsArray.length; pi++) {
     const poem = poemsArray[pi];
     const ukey = poem.k;
