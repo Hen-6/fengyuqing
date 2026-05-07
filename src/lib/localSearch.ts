@@ -60,14 +60,24 @@ function cleanHtml(text: string): string {
 }
 
 async function _doLoad(): Promise<void> {
-  // GitHub Pages 部署在子目录，poems.json 也在同一子目录下
-  const base = typeof window !== "undefined" ? window.location.pathname.replace(/\/[^/]*$/, "") : "";
-  const url = `${base}/data/poems.json`;
-  const raw = await fetch(url).then(r => r.text());
-  const poemsRaw = JSON.parse(raw) as Array<{
+  // GitHub Pages 部署在子目录
+  const base =
+    typeof window !== "undefined"
+      ? window.location.pathname.replace(/\/[^/]*$/, "")
+      : "";
+  const dataBase = `${base}/data`;
+
+  // 并行加载 poems.json + 预建倒排索引（gzip）
+  const [poemsText, idxResponse] = await Promise.all([
+    fetch(`${dataBase}/poems.json`).then((r) => r.text()),
+    fetch(`${dataBase}/poems.index.json.gz`).then((r) => r.arrayBuffer()),
+  ]);
+
+  // 解析 poems.json
+  const poemsRaw: Array<{
     r: number; t: string; a: string; d: string;
     id?: string; content?: string[]; note?: string;
-  }>;
+  }> = JSON.parse(poemsText);
 
   poemsArray = poemsRaw.map((p) => ({
     k: `${p.t.trim()}:${p.a.trim()}`,
@@ -85,17 +95,19 @@ async function _doLoad(): Promise<void> {
     poemsMapData[poemsArray[i].k] = i;
   }
 
-  // 预建字符倒排索引
-  charIndex = new Map();
-  for (let i = 0; i < poemsArray.length; i++) {
-    const chars = new Set(
-      poemsArray[i].c.join("").replace(PUNCT_RE, "").split("")
-    );
-    for (const c of chars) {
-      if (!charIndex.has(c)) charIndex.set(c, []);
-      charIndex.get(c)!.push(i);
-    }
-  }
+  // 直接加载预建倒排索引（gzip 压缩，浏览器 DecompressionStream 解压）
+  const ds = new DecompressionStream("gzip");
+  const idxText = await new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(idxResponse));
+        controller.close();
+      },
+    })
+      .pipeThrough(ds)
+  ).text();
+  const charIndexRaw: Record<string, number[]> = JSON.parse(idxText);
+  charIndex = new Map(Object.entries(charIndexRaw));
 
   _loaded = true;
 }
