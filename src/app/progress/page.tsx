@@ -2,21 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { loadStore } from "@/lib/user";
+import { useUser } from "@/lib/userContext";
 import { getRankList } from "@/lib/poems";
-import { PoemProgress } from "@/lib/srs";
+import { PoemProgress, setLevel } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { getPoemByKeyExport as getPoemByKey } from "@/lib/localSearch";
+import type { OnlinePoemResult } from "@/lib/localSearch";
+import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
-
 export default function ProgressPage() {
-  const [store, setStore] = useState<ReturnType<typeof loadStore> | null>(null);
+  const { store, loaded, upsertPoemProgress, deletePoemProgress } = useUser();
   const [rankMap, setRankMap] = useState<Map<string, { t: string; a: string; d: string }>>(new Map());
+  const [allLoaded, setAllLoaded] = useState(false);
 
   useEffect(() => {
-    setStore(loadStore());
     const list = getRankList();
     const map = new Map<string, { t: string; a: string; d: string }>();
     for (const p of list) {
@@ -25,27 +25,37 @@ export default function ProgressPage() {
     setRankMap(map);
   }, []);
 
-  if (!store) return null;
+  useEffect(() => {
+    loadAllPoemsLookup().then(() => setAllLoaded(true));
+  }, []);
 
-  // 从 store.poems 提取已记录的诗，跳过旧 ObjectId key
+  if (!loaded) return null;
+
   const practiced = Object.values(store.poems).filter(
-    (p) => !OBJECTID_RE.test(p.poemId)
+    (p) => !OBJECTID_RE.test(p.poemId) && p.level > 1
   );
 
   type PoemEntry = { key: string; title: string; author: string; dynasty: string; p: PoemProgress };
   const byLevel: Record<string, PoemEntry[]> = {
-    "1": [], "2": [], "3": [], "4": [], "5": [],
+    "2": [], "3": [], "4": [], "5": [],
   };
 
   for (const prog of practiced) {
-    const info = rankMap.get(prog.poemId) ?? { t: prog.poemId.split(":")[0] || prog.poemId, a: "", d: "" };
-    const lvl = String(prog.level) as "1" | "2" | "3" | "4" | "5";
+    const info = rankMap.get(prog.poemId);
+    const lookup = allLoaded ? getPoemByKeyFast(prog.poemId) : null;
+    
+    const parts = prog.poemId.split(":");
+    const t = info?.t || lookup?.t || parts[0] || prog.poemId;
+    const a = info?.a || lookup?.a || parts.slice(1).join(":") || "";
+    const d = info?.d || lookup?.d || "未知";
+
+    const lvl = String(prog.level) as "2" | "3" | "4" | "5";
     if (!byLevel[lvl]) byLevel[lvl] = [];
     byLevel[lvl].push({
       key: prog.poemId,
-      title: info.t,
-      author: info.a,
-      dynasty: info.d,
+      title: t,
+      author: a,
+      dynasty: d,
       p: prog,
     });
   }
@@ -53,10 +63,6 @@ export default function ProgressPage() {
   for (const lvl of Object.keys(byLevel)) {
     byLevel[lvl].sort((a, b) => a.title.localeCompare(b.title));
   }
-
-  const oldEntryCount = Object.values(store.poems).filter(
-    (p) => OBJECTID_RE.test(p.poemId)
-  ).length;
 
   return (
     <div className="min-h-screen paper-texture px-6 py-8">
@@ -66,24 +72,10 @@ export default function ProgressPage() {
           <h1 className="text-xl font-bold text-ink">学习详情</h1>
         </header>
 
-        {oldEntryCount > 0 && (
-          <div className="rounded-xl border border-yellow-400/40 bg-yellow-50 p-4 text-sm text-yellow-800">
-            <p>有 <strong>{oldEntryCount}</strong> 条旧版数据因格式变更无法迁移，已忽略。</p>
-            <p className="mt-1 text-xs text-yellow-600">
-              可在「设置」中重置进度以清除旧数据。
-            </p>
-          </div>
-        )}
-
-        {practiced.length === 0 && (
-          <p className="text-center text-text-muted py-8">
-            还没有学习记录，从飞花令开始吧！
-          </p>
-        )}
-
-        {Object.entries(byLevel).map(([lvl, items]) => {
+        {[2, 3, 4, 5].map((lvl) => {
+          const items = byLevel[String(lvl)] ?? [];
           if (items.length === 0) return null;
-          const { name, desc } = LEVEL_LABELS[Number(lvl) as keyof typeof LEVEL_LABELS];
+          const { name, desc } = LEVEL_LABELS[lvl as keyof typeof LEVEL_LABELS];
           return (
             <section key={lvl}>
               <div className="mb-2 flex items-center gap-2">
@@ -96,7 +88,13 @@ export default function ProgressPage() {
               </div>
               <div className="space-y-1">
                 {items.map((item) => (
-                  <PoemEntryRow key={item.key} item={item} />
+                  <PoemEntryRow
+                    key={item.key}
+                    item={item}
+                    p={item.p}
+                    upsert={upsertPoemProgress}
+                    onDelete={() => deletePoemProgress(item.key)}
+                  />
                 ))}
               </div>
             </section>
@@ -107,18 +105,38 @@ export default function ProgressPage() {
   );
 }
 
-function PoemEntryRow({ item }: { item: { key: string; title: string; author: string; dynasty: string } }) {
+function PoemEntryRow({
+  item,
+  p,
+  upsert,
+  onDelete,
+}: {
+  item: { key: string; title: string; author: string; dynasty: string };
+  p: PoemProgress;
+  upsert: (poemId: string, updater: (prog: PoemProgress) => PoemProgress) => void;
+  onDelete: () => void;
+}) {
   const [showCard, setShowCard] = useState(false);
-  const [poemData, setPoemData] = useState<Awaited<ReturnType<typeof getPoemByKey>>>(null);
-  const [loading, setLoading] = useState(false);
+  const [poemData, setPoemData] = useState<{ t: string; a: string; d: string; content: string[] } | null>(null);
+  const [localLevel, setLocalLevel] = useState(p.level);
 
-  const handleClick = async () => {
+  // 同步外部变化
+  useEffect(() => { setLocalLevel(p.level); }, [p.level]);
+
+  const handleClick = () => {
     if (showCard) { setShowCard(false); return; }
-    setLoading(true);
+    const found = getPoemByKeyFast(item.key);
+    setPoemData(found ?? null);
     setShowCard(true);
-    const result = await getPoemByKey(item.key);
-    setPoemData(result);
-    setLoading(false);
+  };
+
+  const handleSetLevel = (lvl: number) => {
+    setLocalLevel(lvl);
+    if (lvl === 1) {
+      onDelete();
+    } else {
+      upsert(item.key, (prev) => setLevel(prev, lvl));
+    }
   };
 
   return (
@@ -129,16 +147,47 @@ function PoemEntryRow({ item }: { item: { key: string; title: string; author: st
       >
         <div>
           <span className="font-medium text-ink">{item.title}</span>
-          <span className="ml-2 text-xs text-text-muted">{item.author}</span>
         </div>
-        <span className="text-xs text-text-muted">{item.dynasty}</span>
+        <div className="text-xs text-text-muted">
+          <span className="opacity-70">[{item.dynasty}]</span> <span className="ml-1">{item.author}</span>
+        </div>
       </button>
 
       {showCard && (
         <div className="rounded-xl border border-border bg-surface p-4">
-          {loading && <p className="text-center text-text-muted text-sm animate-pulse">加载中…</p>}
-          {poemData && <OnlinePoemCard result={poemData.poem} />}
-          {!loading && !poemData && (
+          {/* 熟练度调整 */}
+          <div className="mb-3 flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-text-muted">熟练度：</span>
+            {([1, 2, 3, 4, 5] as const).map((lvl) => (
+              <button
+                key={lvl}
+                onClick={() => handleSetLevel(lvl)}
+                className={`px-2 py-1 rounded text-xs font-medium transition ${
+                  localLevel === lvl
+                    ? "bg-accent text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+              >
+                {lvl}级
+              </button>
+            ))}
+          </div>
+
+          {poemData ? (
+            <OnlinePoemCard
+              highlightMatch={false}
+              result={{
+                _id: `${poemData.t}:${poemData.a}`,
+                name: poemData.t,
+                author: poemData.a,
+                dynasty: poemData.d,
+                content: poemData.content,
+                note: "",
+                matchedLine: poemData.content[0] ?? "",
+                matchedLineIndex: 0,
+              }}
+            />
+          ) : (
             <p className="text-center text-text-muted text-sm">未找到诗词内容</p>
           )}
         </div>

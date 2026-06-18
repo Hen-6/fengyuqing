@@ -17,14 +17,15 @@ export default function DailyPage() {
     const store = loadStore();
     const newRank = advanceDailyRank(store);
     setRank(newRank);
-    const entry = getDailyEntry(newRank);
-    setEntry(entry);
+    const dailyEntry = getDailyEntry(newRank);
+    setEntry(dailyEntry);
 
-    // 同步搜索
-    const hits = searchOnline(entry.t, 3);
-    const hit = hits.find((h) => h.poem.name === entry.t) ?? hits[0];
-    if (hit) setPoemResult(hit);
-    setLoading(false);
+    // 异步搜索
+    searchOnline(dailyEntry.t, 3).then((hits) => {
+      const hit = hits.find((h) => h.poem.name === dailyEntry.t) ?? hits[0];
+      if (hit) setPoemResult(hit);
+      setLoading(false);
+    });
   }, []);
 
   if (loading) {

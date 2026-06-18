@@ -3,12 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
-  basePath: "/fengyuqing",
+  // basePath removed for local development
   images: {
     unoptimized: true,
   },
   // Force webpack to transpile @jobinjia/shuimo-core (skip SWC, faster)
   transpilePackages: ["@jobinjia/shuimo-core"],
+  turbopack: {},
   webpack: (config, { dev, isServer }) => {
     if (!dev && !isServer) {
       config.optimization = {

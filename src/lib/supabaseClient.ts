@@ -1,0 +1,8 @@
+import { createClient } from '@supabase/supabase-js'
+
+// Next.js prerenders pages at build time when these environment variables may not be set yet.
+// We provide placeholder values to prevent initialization crashes during building.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy-project.supabase.co'
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key'
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)

@@ -16,7 +16,7 @@ export interface UserStore {
   poems: Record<string, PoemProgress>;
 }
 
-function defaultStore(): UserStore {
+export function defaultStore(): UserStore {
   return {
     version: 1,
     initialized: false,
@@ -39,6 +39,12 @@ export function loadStore(): UserStore {
   } catch {
     return defaultStore();
   }
+}
+
+/** 惰性获取进度 — 不存在的诗返回默认进度，不写入 store */
+export function getPoemProgressReadOnly(store: UserStore, poemId: string): PoemProgress {
+  const key = findPoemKey(store, poemId);
+  return store.poems[key] ?? createInitialProgress(key);
 }
 
 /** 将旧版 ObjectId key 迁移到新的 title:author key */
@@ -81,7 +87,7 @@ export function saveStore(store: UserStore): void {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(store));
   } catch {
-    console.error("Failed to save store to localStorage");
+    // localStorage unavailable (private mode, quota exceeded, etc.) — progress not persisted
   }
 }
 
@@ -124,14 +130,21 @@ function findPoemKey(store: UserStore, rawId: string): string {
 // ─── Progress accessors ─────────────────────────────────────────────────────
 
 export function getPoemProgress(store: UserStore, poemId: string): PoemProgress {
-  const key = findPoemKey(store, poemId);
-  return store.poems[key] ?? createInitialProgress(key);
+  // 惰性：不在 store 中则返回默认值，不写入 store（避免撑大 localStorage）
+  return getPoemProgressReadOnly(store, poemId);
 }
 
 export function setPoemProgress(store: UserStore, progress: PoemProgress): void {
   const key = findPoemKey(store, progress.poemId);
   progress.poemId = key;
   store.poems[key] = progress;
+  saveStore(store);
+}
+
+/** 删除进度记录（降级到1级时调用） */
+export function deletePoemProgress(store: UserStore, poemId: string): void {
+  const key = findPoemKey(store, poemId);
+  delete store.poems[key];
   saveStore(store);
 }
 
@@ -218,22 +231,27 @@ export function importProgress(json: string): boolean {
   }
 }
 
-/** 统计概览 */
+/** 统计概览
+ * 统一逻辑：从 store.poems 出发，计所有诗词。
+ */
 export function getOverview(store: UserStore): {
   total: number;
   level3plus: number;
   level5: number;
   dueToday: number;
 } {
-  const poems = getRankList();
+  const OBJECTID_RE = /^[0-9a-f]{24}$/i;
   const today = new Date().toISOString().split("T")[0];
+
   let level3plus = 0, level5 = 0, dueToday = 0;
-  for (const poem of poems) {
-    const id = normId(poem.t, poem.a);
-    const p = store.poems[id] ?? createInitialProgress(id);
-    if (p.level >= 3) level3plus++;
-    if (p.level === 5) level5++;
-    if (p.nextReview <= today) dueToday++;
+
+  for (const [key, prog] of Object.entries(store.poems)) {
+    if (OBJECTID_RE.test(key)) continue;
+
+    if (prog.level >= 3) level3plus++;
+    if (prog.level === 5) level5++;
+    if (prog.nextReview <= today) dueToday++;
   }
-  return { total: poems.length, level3plus, level5, dueToday };
+
+  return { total: 72995, level3plus, level5, dueToday };
 }

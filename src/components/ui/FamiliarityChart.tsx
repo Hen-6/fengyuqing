@@ -5,7 +5,7 @@ import { useUser } from "@/lib/userContext";
 
 export function FamiliarityChart() {
   const { overview } = useUser();
-  const { total, level3plus, level5, dueToday } = overview;
+  const { total, level3plus, level5, dueToday, loaded } = overview;
 
   const items = [
     { label: "已识句（Lv.3+）", value: level3plus, color: "bg-correct" },
@@ -15,6 +15,25 @@ export function FamiliarityChart() {
   ];
 
   const pct = total > 0 ? Math.round((level3plus / total) * 100) : 0;
+
+  if (!loaded) {
+    return (
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm animate-pulse">
+        <div className="mb-4 h-4 w-24 rounded bg-border" />
+        <div className="mb-5 flex justify-center">
+          <div className="h-28 w-28 rounded-full bg-border" />
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex justify-between">
+              <div className="h-4 w-32 rounded bg-border" />
+              <div className="h-4 w-8 rounded bg-border" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -34,7 +53,7 @@ export function FamiliarityChart() {
               strokeLinecap="round"
             />
           </svg>
-          <span className="text-2xl font-bold text-ink">{pct}%</span>
+          <span className="text-2xl font-bold text-ink" suppressHydrationWarning>{pct}%</span>
         </div>
       </div>
 
@@ -45,8 +64,9 @@ export function FamiliarityChart() {
             <span className="flex items-center gap-2">
               <span
                 className={`inline-block h-2 w-2 rounded-full ${item.color}`}
+                suppressHydrationWarning
               />
-              <span className="font-semibold text-ink">{item.value}</span>
+              <span className="font-semibold text-ink" suppressHydrationWarning>{item.value}</span>
             </span>
           </li>
         ))}

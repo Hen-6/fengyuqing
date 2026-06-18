@@ -1,12 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { exportProgress, importProgress, loadStore } from "@/lib/user";
+import { useState } from "react";
+import { exportProgress, importProgress } from "@/lib/user";
 import { FamiliarityChart } from "@/components/ui/FamiliarityChart";
 import { useLogin } from "@/lib/login";
+import { useUser } from "@/lib/userContext";
+import { AuthModal } from "@/components/ui/AuthModal";
+
 export default function HomePage() {
-  const store = loadStore();
+  const { store, user, syncing, logout } = useUser();
   const { uuid, discordId, copyUUID, copied } = useLogin();
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
   const games = [
     {
@@ -30,12 +35,55 @@ export default function HomePage() {
       desc: "100字提示格，猜出五言/七言对句",
       tag: "挑战",
     },
+    {
+      href: "/search/",
+      emoji: "🔍",
+      title: "搜索诗词",
+      desc: "按作者、标题或内容搜索，快捷调整熟练度",
+      tag: "工具",
+    },
   ];
 
   return (
     <div className="glass-panel">
+      {/* 顶部云同步控制 */}
+      <header className="flex justify-between items-center px-6 pt-4">
+        <div className="flex items-center gap-1.5">
+          {syncing && (
+            <span className="text-xs text-accent animate-pulse flex items-center gap-1">
+              🔄 进度同步中...
+            </span>
+          )}
+          {!syncing && user && (
+            <span className="text-xs text-correct flex items-center gap-1">
+              ✓ 云备份已同步
+            </span>
+          )}
+        </div>
+        <div>
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-muted truncate max-w-[120px]">{user.email}</span>
+              <button
+                onClick={logout}
+                className="text-[10px] text-accent border border-accent/20 rounded-md px-1.5 py-0.5 bg-surface hover:bg-accent/5 transition"
+              >
+                登出
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsAuthOpen(true)}
+              className="text-xs text-ink border border-border rounded-lg px-2.5 py-1 bg-surface hover:border-accent hover:text-accent transition shadow-sm active:scale-95"
+            >
+              ☁️ 登录同步
+            </button>
+          )}
+        </div>
+      </header>
+
       {/* 顶部标题 */}
-      <div className="pt-10 pb-4 text-center">
+      <div className="pt-6 pb-4 text-center">
         <h1 className="text-5xl font-bold tracking-wide text-ink brush-title">
           风雨情
         </h1>
@@ -43,7 +91,6 @@ export default function HomePage() {
       </div>
 
       <div className="mx-auto max-w-2xl px-6 pb-12 space-y-5">
-
         {/* 引言 */}
         <div className="text-center py-1">
           <p className="text-sm text-text-muted italic">
@@ -198,6 +245,8 @@ export default function HomePage() {
           <p className="mt-1 opacity-60">风雨情 · 古诗词练习平台</p>
         </div>
       </div>
+
+      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
     </div>
   );
 }

@@ -85,6 +85,11 @@ export function upgradeToLevel(progress: PoemProgress, minLevel: number): PoemPr
   return { ...progress, level: Math.max(progress.level, minLevel) };
 }
 
+/** 直接设置到指定等级（可升可降） */
+export function setLevel(progress: PoemProgress, level: number): PoemProgress {
+  return { ...progress, level: Math.max(1, Math.min(5, level)) };
+}
+
 /** 获取今天应该复习的诗 */
 export function getDuePoems(
   progressMap: Record<string, PoemProgress>

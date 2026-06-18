@@ -21,24 +21,31 @@ export function PoemsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 如果已经加载过（模块缓存），直接获取
-    if (isLoaded()) {
-      const data = getAllPoems();
-      setPoems(data);
-      setLoaded(true);
-      return;
-    }
-    // 否则加载
-    ensureLoaded()
-      .then(() => {
-        const data = getAllPoems();
+    const load = async () => {
+      // 如果 Meilisearch 已连接，直接获取缓存的 poems
+      if (isLoaded()) {
+        try {
+          const data = await getAllPoems();
+          setPoems(data);
+          setLoaded(true);
+          return;
+        } catch {
+          // fall through to ensureLoaded
+        }
+      }
+      // 连接 Meilisearch 并加载全量诗词
+      try {
+        await ensureLoaded();
+        const data = await getAllPoems();
         setPoems(data);
         setLoaded(true);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(msg);
         setLoaded(true);
-      });
+      }
+    };
+    load();
   }, []);
 
   return (
