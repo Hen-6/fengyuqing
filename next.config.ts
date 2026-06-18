@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+console.log("--- VERCEL BUILD ENV DIAGNOSTICS ---");
+console.log("NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "SET (length: " + process.env.NEXT_PUBLIC_SUPABASE_URL.length + ")" : "NOT SET");
+console.log("NEXT_PUBLIC_SUPABASE_ANON_KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "SET (length: " + process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length + ")" : "NOT SET");
+console.log("-------------------------------------");
+
 const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
