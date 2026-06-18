@@ -39,7 +39,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         onClose();
       }
     } catch (err: any) {
-      setMessage(`错误: ${err.message || err}`);
+      const targetUrl = (supabase as any).supabaseUrl || "未知";
+      setMessage(`错误: ${err.message || err} (目标地址: ${targetUrl})`);
     } finally {
       setLoading(false);
     }
