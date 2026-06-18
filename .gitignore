@@ -41,7 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 # local data copy (build artifact from data/poems.json)
-src/data/
 
 # python cache
 __pycache__/
