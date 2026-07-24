@@ -24,7 +24,8 @@ export function JielongGame() {
   // 当前系统句（来自某首诗的某句）
   const [botLine, setBotLine] = useState<string>("");
   const [botPoem, setBotPoem] = useState<OnlinePoemResult | null>(null);
-  const [botLastChar, setBotLastChar] = useState<string>("");
+  const [requiredChar, setRequiredChar] = useState<string>("");
+  const [userLastChar, setUserLastChar] = useState<string>("");
   const [userInput, setUserInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const [onlineResult, setOnlineResult] = useState<OnlinePoemResult | null>(null);
@@ -58,57 +59,110 @@ export function JielongGame() {
       return;
     }
 
-    const pick = hits[Math.floor(Math.random() * hits.length)];
-    const lines = pick.poem.content
-      .map((l) => cleanLine(l))
-      .filter((l) => l.length >= 4);
-    if (lines.length === 0) {
-      setFeedback({ ok: false, msg: "无法开始，请稍后再试" });
-      setMode(null);
-      return;
-    }
+    if (m === "same") {
+      // 同诗接龙：随机取一首诗的前面某句
+      const pick = hits[Math.floor(Math.random() * hits.length)];
+      const lines = pick.poem.content.map((l) => cleanLine(l)).filter((l) => l.length >= 4);
+      if (lines.length <= 1) {
+        setFeedback({ ok: false, msg: "无法开始，请稍后再试" });
+        setMode(null);
+        return;
+      }
+      const idx = Math.floor(Math.random() * (lines.length - 1));
+      setBotLine(pick.poem.content[idx]); // 保留标点符号展示
+      setBotPoem(pick.poem);
+      setRequiredChar(lines[idx + 1][0]);
+    } else {
+      // 跨诗接龙：找一条以 startChar 开头的诗句作为系统句
+      const candidates: { line: string; poem: OnlinePoemResult }[] = [];
+      for (const hit of hits) {
+        for (const line of hit.poem.content) {
+          const cleaned = cleanLine(line);
+          if (cleaned.length >= 4 && cleaned[0] === startChar) {
+            candidates.push({ line, poem: hit.poem });
+          }
+        }
+      }
 
-    const firstLine = lines[Math.floor(Math.random() * lines.length)];
-    setBotLine(firstLine);
-    setBotPoem(pick.poem);
-    setBotLastChar(firstLine[firstLine.length - 1]);
+      if (candidates.length === 0) {
+        const pick = hits[Math.floor(Math.random() * hits.length)];
+        const lines = pick.poem.content.map((l) => cleanLine(l)).filter((l) => l.length >= 4);
+        if (lines.length === 0) {
+          setFeedback({ ok: false, msg: "无法开始，请稍后再试" });
+          setMode(null);
+          return;
+        }
+        const firstLine = lines[Math.floor(Math.random() * lines.length)];
+        setBotLine(firstLine);
+        setBotPoem(pick.poem);
+        setRequiredChar(firstLine[firstLine.length - 1]);
+      } else {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        setBotLine(pick.line);
+        setBotPoem(pick.poem);
+        setRequiredChar(cleanLine(pick.line)[cleanLine(pick.line).length - 1]);
+      }
+    }
   }, []);
 
   /** 用户提交 */
   const submit = useCallback(async () => {
     if (!userInput.trim()) return;
-    const trimmed = userInput.trim();
-    const inputLast = trimmed[trimmed.length - 1];
+    const trimmed = cleanLine(userInput);
 
     if (trimmed.length < 4) {
       setFeedback({ ok: false, msg: "诗句至少需要4个字" });
       return;
     }
 
-    if (inputLast !== botLastChar) {
-      setFeedback({ ok: false, msg: `末字「${inputLast}」≠ 上句末字「${botLastChar}」` });
+    const inputFirst = trimmed[0];
+    if (inputFirst !== requiredChar) {
+      setFeedback({ ok: false, msg: `首字「${inputFirst}」≠ 上句末字「${requiredChar}」` });
       return;
     }
 
-    setSearching(true);
-    const hits = await searchOnline(trimmed, 5);
-    setSearching(false);
+    if (mode === "same") {
+      // 同诗接龙：必须接当前诗词的下一句
+      const lines = botPoem ? botPoem.content.map(cleanLine) : [];
+      const currentIndex = botPoem ? lines.indexOf(cleanLine(botLine)) : -1;
+      const expectedNext = currentIndex !== -1 && currentIndex + 1 < lines.length ? lines[currentIndex + 1] : "";
+      
+      if (!expectedNext || trimmed !== expectedNext) {
+        setFeedback({ ok: false, msg: `回答错误，必须接当前诗词的下一句（以「${requiredChar}」开头）` });
+        return;
+      }
 
-    if (hits.length === 0) {
-      setFeedback({ ok: false, msg: "诗句不在库中，请检查是否有错别字" });
-      return;
+      // 正确
+      const hitPoem = botPoem!;
+      setOnlineResult(hitPoem);
+      setScore((s) => s + 1);
+      setUserLastChar(trimmed[trimmed.length - 1]);
+      setFeedback({ ok: true, msg: "✓ 正确！" });
+      markPoemAnswered(store, `${hitPoem.name.trim()}:${hitPoem.author.trim()}`);
+      setShowCard(true);
+    } else {
+      // 跨诗接龙：检查诗句是否在库中
+      setSearching(true);
+      const hits = await searchOnline(trimmed, 5);
+      setSearching(false);
+
+      if (hits.length === 0) {
+        setFeedback({ ok: false, msg: "诗句不在库中，请检查是否有错别字" });
+        return;
+      }
+
+      // 正确
+      const hit = hits[0];
+      setOnlineResult(hit.poem);
+      setScore((s) => s + 1);
+      setUserLastChar(trimmed[trimmed.length - 1]);
+      setFeedback({ ok: true, msg: "✓ 正确！" });
+      markPoemAnswered(store, `${hit.poem.name.trim()}:${hit.poem.author.trim()}`);
+      setShowCard(true);
     }
+  }, [userInput, requiredChar, mode, botPoem, botLine, store]);
 
-    // 正确
-    const hit = hits[0];
-    setOnlineResult(hit.poem);
-    setScore((s) => s + 1);
-    setFeedback({ ok: true, msg: "✓ 正确！" });
-    markPoemAnswered(store, `${hit.poem.name.trim()}:${hit.poem.author.trim()}`);
-    setShowCard(true);
-  }, [userInput, botLastChar, store]);
-
-  /** 下一轮：系统出用户刚才接的那句，用户接下一句 */
+  /** 下一轮：系统接上一句末字，给出下一句 */
   const nextRound = useCallback(async () => {
     if (!onlineResult) return;
 
@@ -119,64 +173,55 @@ export function JielongGame() {
     setRound((r) => r + 1);
 
     if (mode === "same") {
-      // 同诗接龙：在同一首诗中找下一句
-      const lines = onlineResult.content.map((l) => cleanLine(l)).filter((l) => l.length >= 4);
-      // 找所有末字等于 botLastChar 的句子，再找它们的下一句
-      let foundNext = false;
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i][lines[i].length - 1] === botLastChar && i + 1 < lines.length) {
-          const next = lines[i + 1];
-          setBotLine(next);
-          setBotPoem(onlineResult);
-          setBotLastChar(next[next.length - 1]);
-          foundNext = true;
-          break;
+      // 同诗接龙：自动推进一步
+      const lines = onlineResult.content.map(cleanLine);
+      const currentIndex = lines.indexOf(cleanLine(botLine));
+      
+      if (currentIndex !== -1 && currentIndex + 1 < lines.length) {
+        const nextSystemLine = onlineResult.content[currentIndex + 1];
+        setBotLine(nextSystemLine);
+        setBotPoem(onlineResult);
+        
+        if (currentIndex + 2 < lines.length) {
+          const nextUserLine = lines[currentIndex + 2];
+          setRequiredChar(nextUserLine[0]);
+        } else {
+          setFeedback({ ok: true, msg: "太棒了！这首诗已接完，即将开始新的一首！" });
+          setTimeout(() => {
+            startGame("same");
+          }, 2000);
         }
+      } else {
+        startGame("same");
       }
-      if (!foundNext) {
-        // 找不到匹配的下一句，换一首
-        setFeedback({ ok: false, msg: "这首诗没有更多可接的句子，换一首继续" });
-        // 重新开始搜索新诗
-        const hits = await searchOnline(botLastChar, 10);
-        if (hits.length > 0) {
-          const pick = hits[Math.floor(Math.random() * hits.length)];
-          const nextLines = pick.poem.content.map((l) => cleanLine(l)).filter((l) => l.length >= 4);
-          if (nextLines.length > 0) {
-            const first = nextLines[Math.floor(Math.random() * nextLines.length)];
-            setBotLine(first);
-            setBotPoem(pick.poem);
-            setBotLastChar(first[first.length - 1]);
+    } else {
+      // 跨诗接龙：寻找以 userLastChar 开头的诗句作为系统句
+      setSearching(true);
+      const hits = await searchOnline(userLastChar, 30);
+      setSearching(false);
+
+      const candidates: { line: string; poem: OnlinePoemResult }[] = [];
+      for (const hit of hits) {
+        for (const line of hit.poem.content) {
+          const cleaned = cleanLine(line);
+          if (cleaned.length >= 4 && cleaned[0] === userLastChar) {
+            candidates.push({ line, poem: hit.poem });
           }
         }
       }
-    } else {
-      // 跨诗接龙：搜用户上一句末字开头的诗
-      setSearching(true);
-      const hits = await searchOnline(botLastChar, 10);
-      setSearching(false);
 
-      if (hits.length === 0) {
-        setFeedback({ ok: false, msg: `没有找到含「${botLastChar}」的诗句，游戏结束` });
-        setMode(null);
-        return;
-      }
-
-      const pick = hits[Math.floor(Math.random() * hits.length)];
-      const lines = pick.poem.content
-        .map((l) => cleanLine(l))
-        .filter((l) => l.length >= 4 && l[l.length - 1] === botLastChar);
-      const candidates = lines.length > 0 ? lines : pick.poem.content.map((l) => cleanLine(l)).filter((l) => l.length >= 4);
       if (candidates.length === 0) {
-        setFeedback({ ok: false, msg: "游戏结束" });
+        setFeedback({ ok: false, msg: `没有找到以「${userLastChar}」开头的句子，你赢了！` });
         setMode(null);
         return;
       }
-      const first = candidates[Math.floor(Math.random() * candidates.length)];
-      setBotLine(first);
+
+      const pick = candidates[Math.floor(Math.random() * candidates.length)];
+      setBotLine(pick.line);
       setBotPoem(pick.poem);
-      setBotLastChar(first[first.length - 1]);
+      setRequiredChar(cleanLine(pick.line)[cleanLine(pick.line).length - 1]);
     }
-  }, [onlineResult, mode, botLastChar]);
+  }, [onlineResult, mode, botLine, userLastChar, startGame]);
 
   const confirmLevel = useCallback(() => {
     if (onlineResult) {
@@ -193,7 +238,8 @@ export function JielongGame() {
     setMode(null);
     setBotLine("");
     setBotPoem(null);
-    setBotLastChar("");
+    setRequiredChar("");
+    setUserLastChar("");
     setUserInput("");
     setFeedback(null);
     setOnlineResult(null);
@@ -213,7 +259,7 @@ export function JielongGame() {
         <div className="space-y-6">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-ink">接龙</h2>
-            <p className="mt-1 text-sm text-text-muted">下一句的末字须与上一句末字相同</p>
+            <p className="mt-1 text-sm text-text-muted">下一句诗的第一个字须与上一句的最后一个字相同</p>
           </div>
           {searching && (
             <p className="text-center text-sm text-text-muted animate-pulse">在线加载中…</p>
@@ -264,11 +310,11 @@ export function JielongGame() {
             </div>
           )}
 
-          {/* 末字提示 */}
+          {/* 首字提示 */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-text-muted">请接（含</span>
-            <span className="text-2xl font-bold text-accent">{botLastChar}</span>
-            <span className="text-sm text-text-muted">字，≥4字）</span>
+            <span className="text-sm text-text-muted">请接（以</span>
+            <span className="text-2xl font-bold text-accent">{requiredChar}</span>
+            <span className="text-sm text-text-muted">字开头，≥4字）</span>
           </div>
 
           {/* 输入 */}
