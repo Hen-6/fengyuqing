@@ -223,17 +223,32 @@ export function XunhuaGame() {
     setError("");
 
     try {
-      // 2. Shuffle and find a valid target
-      const shuffled = [...knownKeys].sort(() => Math.random() - 0.5);
+      // 2. Fisher-Yates Shuffle
+      const shuffled = [...knownKeys];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
       let pick: Couplet | null = null;
 
-      for (const key of shuffled) {
-        const res = await getPoemByKeyExport(key);
-        if (!res || !res.poem) continue;
+      // 3. Batch candidate poems in parallel to check for valid couplets
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
+        const batchKeys = shuffled.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batchKeys.map(k => getPoemByKeyExport(k)));
         
-        const couplets = extractCouplets(res.poem);
-        if (couplets.length > 0) {
-          pick = couplets[Math.floor(Math.random() * couplets.length)];
+        const validCandidates: Couplet[] = [];
+        for (const res of batchResults) {
+          if (!res || !res.poem) continue;
+          const couplets = extractCouplets(res.poem);
+          if (couplets.length > 0) {
+            validCandidates.push(couplets[Math.floor(Math.random() * couplets.length)]);
+          }
+        }
+        
+        if (validCandidates.length > 0) {
+          pick = validCandidates[Math.floor(Math.random() * validCandidates.length)];
           break;
         }
       }
