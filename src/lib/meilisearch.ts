@@ -120,7 +120,8 @@ async function canonicalMd5(title: string, author: string): Promise<string> {
 function linesContain(lines: string[], query: string): boolean {
   const norm = stripPunct(query)
   if (norm.length < 4) return true // 太短，跳过精确过滤
-  return lines.some((line) => stripPunct(line).includes(norm))
+  const joined = lines.map((line) => stripPunct(line)).join('')
+  return joined.includes(norm)
 }
 
 // ─── 内部搜索 ───────────────────────────────────────────────
@@ -131,8 +132,14 @@ async function _search(query: string, options?: {
 }): Promise<SearchResult[]> {
   if (!_connected) {
     try {
+      let dbQuery = query
+      const cleanQuery = stripPunct(query)
+      if (cleanQuery.length >= 8) {
+        dbQuery = cleanQuery.slice(0, cleanQuery.length >= 14 ? 7 : 5)
+      }
+
       const { data, error } = await supabase.rpc('search_poems', {
-        query_text: query,
+        query_text: dbQuery,
         max_results: options?.limit ?? 8
       })
       if (error) throw error
