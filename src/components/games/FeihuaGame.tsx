@@ -477,24 +477,26 @@ export function FeihuaGame() {
           <div className="flex gap-2">
             <input
               type="text"
-              maxLength={1}
               value={customChar}
-              onChange={(e) => {
-                const val = e.target.value.trim().replace(/[^\u4e00-\u9fa5]/g, "");
-                setCustomChar(val);
-              }}
+              onChange={(e) => setCustomChar(e.target.value)}
               placeholder="自拟单字（如：酒）"
               className="input-chinese flex-1 text-center"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && customChar.length === 1) {
-                  selectChar(customChar);
+                if (e.key === "Enter") {
+                  const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
+                  if (cleaned.length === 1) {
+                    selectChar(cleaned);
+                  } else {
+                    setFeedback({ ok: false, msg: "请输入单个汉字作为关键字" });
+                  }
                 }
               }}
             />
             <button
               onClick={() => {
-                if (customChar.length === 1) {
-                  selectChar(customChar);
+                const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
+                if (cleaned.length === 1) {
+                  selectChar(cleaned);
                 } else {
                   setFeedback({ ok: false, msg: "请输入单个汉字作为关键字" });
                 }
