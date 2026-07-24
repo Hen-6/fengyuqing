@@ -203,6 +203,7 @@ export function XunhuaGame() {
   const [showConfirm, setShowConfirm] = useState<{ type: "confirm"; userInput: string; correct: string; match: Couplet } | { type: "nearby"; options: Couplet[] } | null>(null);
   const [skipped, setSkipped] = useState(false);
   const [nearbyInput, setNearbyInput] = useState("");
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const scoredCharsRef = useRef<Set<string>>(new Set());
   const hintCharsRef = useRef<Set<string>>(new Set());
@@ -210,13 +211,25 @@ export function XunhuaGame() {
   // Start a round
   const startRound = useCallback(async () => {
     // 1. Get known keys (Level 3+)
-    const knownKeys = Object.entries(store.poems)
+    let knownKeys = Object.entries(store.poems)
       .filter(([_, prog]) => prog.level >= 3)
       .map(([k]) => k);
 
     if (knownKeys.length === 0) {
-      setMessage("已识句诗词库为空，请先在其他游戏中提升熟练度");
-      return;
+      // Demo fallback keys so it works without log-in/empty progress
+      knownKeys = [
+        "静夜思:李白",
+        "登鹳雀楼:王之涣",
+        "春晓:孟浩然",
+        "江雪:柳宗元",
+        "鹿柴:王维",
+        "相思:王维",
+        "悯农:李绅",
+        "寻隐者不遇:贾岛"
+      ];
+      setIsDemoMode(true);
+    } else {
+      setIsDemoMode(false);
     }
 
     setPhase("playing");
@@ -507,6 +520,12 @@ export function XunhuaGame() {
           {phase === "playing" ? `总分 ${totalScore}分` : `本轮 +${roundScore}分`}
         </span>
       </div>
+
+      {isDemoMode && (
+        <div style={{ textAlign: "center", color: "#999", fontSize: "12px", background: "#f8f9fa", border: "1px dashed #ccc", padding: "6px", borderRadius: "4px", margin: "0 auto 12px", maxWidth: `${GRID * (CELL + 2)}px` }}>
+          💡 当前为演示模式（已识句库为空）
+        </div>
+      )}
 
       {/* 100-char hint grid */}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${GRID}, ${CELL}px)`, gap: "2px", maxWidth: `${GRID * (CELL + 2)}px`, margin: "0 auto 16px" }}>
