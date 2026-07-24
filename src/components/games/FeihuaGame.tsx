@@ -40,6 +40,7 @@ export function FeihuaGame() {
   const { store, markPoemAnswered, setLevel } = useUser();
   const { loaded } = usePoems();
   const [selectedChar, setSelectedChar] = useState<string>("");
+  const [customChar, setCustomChar] = useState("");
   const [phase, setPhase] = useState<"pick" | "playing" | "summary">("pick");
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
   const [userInput, setUserInput] = useState("");
@@ -73,6 +74,7 @@ export function FeihuaGame() {
   /** 选字后立即搜索 */
   const selectChar = useCallback(async (char: string) => {
     setSelectedChar(char);
+    setCustomChar("");
     setOnlineResult(null);
     setSimilarPoems([]);
     setFeedback(null);
@@ -343,6 +345,7 @@ export function FeihuaGame() {
 
   const handleSwitchChar = useCallback(() => {
     setSelectedChar("");
+    setCustomChar("");
     setBotPoem(null);
     setUserInput("");
     setFeedback(null);
@@ -469,7 +472,44 @@ export function FeihuaGame() {
             随机关键词开始
           </button>
 
-          <div className="text-center text-xs text-text-muted">— 或 自选关键词 —</div>
+          <div className="text-center text-xs text-text-muted">— 或 手动输入单字 —</div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              maxLength={1}
+              value={customChar}
+              onChange={(e) => {
+                const val = e.target.value.trim().replace(/[^\u4e00-\u9fa5]/g, "");
+                setCustomChar(val);
+              }}
+              placeholder="自拟单字（如：酒）"
+              className="input-chinese flex-1 text-center"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customChar.length === 1) {
+                  selectChar(customChar);
+                }
+              }}
+            />
+            <button
+              onClick={() => {
+                if (customChar.length === 1) {
+                  selectChar(customChar);
+                } else {
+                  setFeedback({ ok: false, msg: "请输入单个汉字作为关键字" });
+                }
+              }}
+              className="btn-primary px-6"
+            >
+              开始
+            </button>
+          </div>
+
+          {feedback && !feedback.ok && (
+            <p className="text-center text-sm text-accent">{feedback.msg}</p>
+          )}
+
+          <div className="text-center text-xs text-text-muted">— 或 常用快捷选字 —</div>
 
           <CharPicker selected={selectedChar} onSelect={selectChar} />
         </div>
