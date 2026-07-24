@@ -85,6 +85,8 @@ export async function searchOnline(
       const normAuthor = r.author ? stripPunct(r.author) : "";
       const normDynasty = r.dynasty ? stripPunct(r.dynasty) : "";
 
+      const joinedLines = lines.map((line: string) => stripPunct(line)).join("");
+
       for (const token of tokens) {
         let tokenMatched = false;
         let tokenScore = 0;
@@ -113,17 +115,19 @@ export async function searchOnline(
           tokenMatched = true;
         }
 
-        // Check lines
+        // Check lines (joined)
         if (!tokenMatched) {
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const normLine = stripPunct(line);
-            if (normLine.includes(token)) {
-              tokenScore += 40;
-              tokenMatched = true;
-              matchedLine = line;
-              matchedLineIndex = i;
-              break;
+          if (joinedLines.includes(token)) {
+            tokenScore += 40;
+            tokenMatched = true;
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              const normLine = stripPunct(line);
+              if (normLine.includes(token) || token.includes(normLine)) {
+                matchedLine = line;
+                matchedLineIndex = i;
+                break;
+              }
             }
           }
         }
