@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { searchLocalCached, isCacheLoaded, cleanToken, matchLocalToken } from "../data/allPoemsLookup";
+import { searchLocalCached, isCacheLoaded, cleanToken, matchLocalToken, getPoemByKeyFast } from "../data/allPoemsLookup";
 
 export interface PoemResult {
   _id: string;
@@ -180,6 +180,23 @@ export async function searchByChar(
 }
 
 export async function getPoemByKeyExport(key: string): Promise<SearchResult | null> {
+  const cached = getPoemByKeyFast(key);
+  if (cached) {
+    return {
+      poem: {
+        _id: key,
+        name: cached.t,
+        author: cached.a,
+        dynasty: cached.d || "",
+        content: cached.content || [],
+        note: "",
+        matchedLine: cached.content?.[0] || "",
+        matchedLineIndex: 0,
+      },
+      score: 100,
+    };
+  }
+
   try {
     const { data, error } = await supabase
       .from("poems")

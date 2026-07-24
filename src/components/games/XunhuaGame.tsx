@@ -143,14 +143,15 @@ async function buildHintGridAsync(couplet: Couplet, knownKeys: string[]): Promis
   const result: string[] = [...answerChars];
   const seen = new Set(answerChars);
 
-  // Fetch up to 8 random poems for noise to ensure we have plenty of characters
+  // Fetch up to 8 random poems for noise in parallel
   const noiseKeys = [...knownKeys]
     .filter(k => k !== couplet.key)
     .sort(() => Math.random() - 0.5)
     .slice(0, 8);
 
-  for (const k of noiseKeys) {
-    const res = await getPoemByKeyExport(k);
+  const noiseResults = await Promise.all(noiseKeys.map(k => getPoemByKeyExport(k)));
+
+  for (const res of noiseResults) {
     if (!res || !res.poem) continue;
     const txt = res.poem.content.join('');
     const chars = txt.replace(/[^\u4e00-\u9fa5]/g, "");
@@ -205,18 +206,70 @@ export function XunhuaGame() {
   const [nearbyInput, setNearbyInput] = useState("");
   const [isDemoMode, setIsDemoMode] = useState(false);
 
+  // Prefetch states
+  const [prefetchedNext, setPrefetchedNext] = useState<{ target: Couplet; hintGrid: string[] } | null>(null);
+  const [prefetching, setPrefetching] = useState(false);
+
   const scoredCharsRef = useRef<Set<string>>(new Set());
   const hintCharsRef = useRef<Set<string>>(new Set());
 
+  // Helper to fetch couplet and build grid
+  const fetchNextCoupletAndGrid = useCallback(async (keys: string[]): Promise<{ target: Couplet; hintGrid: string[] } | null> => {
+    const shuffled = [...keys];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    let pick: Couplet | null = null;
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
+      const batchKeys = shuffled.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(batchKeys.map(k => getPoemByKeyExport(k)));
+      
+      const validCandidates: Couplet[] = [];
+      for (const res of batchResults) {
+        if (!res || !res.poem) continue;
+        const couplets = extractCouplets(res.poem);
+        if (couplets.length > 0) {
+          validCandidates.push(couplets[Math.floor(Math.random() * couplets.length)]);
+        }
+      }
+      
+      if (validCandidates.length > 0) {
+        pick = validCandidates[Math.floor(Math.random() * validCandidates.length)];
+        break;
+      }
+    }
+
+    if (!pick) return null;
+    const grid = await buildHintGridAsync(pick, keys);
+    return { target: pick, hintGrid: grid };
+  }, []);
+
+  // Background prefetch trigger
+  const triggerPrefetch = useCallback(async (keys: string[]) => {
+    if (prefetching) return;
+    setPrefetching(true);
+    try {
+      const result = await fetchNextCoupletAndGrid(keys);
+      if (result) {
+        setPrefetchedNext(result);
+      }
+    } catch (e) {
+      console.error("Prefetch next round failed:", e);
+    } finally {
+      setPrefetching(false);
+    }
+  }, [fetchNextCoupletAndGrid, prefetching]);
+
   // Start a round
   const startRound = useCallback(async () => {
-    // 1. Get known keys (Level 3+)
     let knownKeys = Object.entries(store.poems)
       .filter(([_, prog]) => prog.level >= 3)
       .map(([k]) => k);
 
     if (knownKeys.length === 0) {
-      // Demo fallback keys so it works without log-in/empty progress
       knownKeys = [
         "静夜思:李白",
         "登鹳雀楼:王之涣",
@@ -233,66 +286,55 @@ export function XunhuaGame() {
     }
 
     setPhase("playing");
+    setGuesses([]);
+    setInput("");
+    setMessage("");
+    setRemaining(MAX_GUESSES);
+    setRoundScore(0);
+    setSkipped(false);
+
+    // Use prefetched couplet if available
+    if (prefetchedNext) {
+      setTarget(prefetchedNext.target);
+      setHintGrid(prefetchedNext.hintGrid);
+      scoredCharsRef.current = new Set();
+      hintCharsRef.current = new Set(prefetchedNext.target.text.split(""));
+      setPrefetchedNext(null);
+      // Trigger background prefetch for the next round
+      triggerPrefetch(knownKeys);
+      return;
+    }
+
     setLoadingTarget(true);
     setError("");
 
     try {
-      // 2. Fisher-Yates Shuffle
-      const shuffled = [...knownKeys];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-
-      let pick: Couplet | null = null;
-
-      // 3. Batch candidate poems in parallel to check for valid couplets
-      const BATCH_SIZE = 10;
-      for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
-        const batchKeys = shuffled.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.all(batchKeys.map(k => getPoemByKeyExport(k)));
-        
-        const validCandidates: Couplet[] = [];
-        for (const res of batchResults) {
-          if (!res || !res.poem) continue;
-          const couplets = extractCouplets(res.poem);
-          if (couplets.length > 0) {
-            validCandidates.push(couplets[Math.floor(Math.random() * couplets.length)]);
-          }
-        }
-        
-        if (validCandidates.length > 0) {
-          pick = validCandidates[Math.floor(Math.random() * validCandidates.length)];
-          break;
-        }
-      }
-
-      if (!pick) {
+      const result = await fetchNextCoupletAndGrid(knownKeys);
+      if (!result) {
         setError("无法从您已学的诗词中提取出符合 5/7 言格式的对句。");
-        setLoadingTarget(false);
         return;
       }
 
-      const grid = await buildHintGridAsync(pick, knownKeys);
-
-      setTarget(pick);
-      setHintGrid(grid);
-      setGuesses([]);
-      setInput("");
-      setMessage("");
-      setRemaining(MAX_GUESSES);
-      setRoundScore(0);
-      setSkipped(false);
+      setTarget(result.target);
+      setHintGrid(result.hintGrid);
       scoredCharsRef.current = new Set();
-      hintCharsRef.current = new Set(pick.text.split(""));
+      hintCharsRef.current = new Set(result.target.text.split(""));
+
+      // Trigger background prefetch for the next round
+      triggerPrefetch(knownKeys);
     } catch (e) {
-      setError("加载目标诗词失败，请确保 Meilisearch 正在运行。");
+      setError("加载目标诗词失败，请稍后再试。");
     } finally {
       setLoadingTarget(false);
     }
-  }, [store.poems]);
+  }, [store.poems, prefetchedNext, fetchNextCoupletAndGrid, triggerPrefetch]);
 
-  // First round
+  // Pre-load allPoemsLookup cache asynchronously on mount
+  useEffect(() => {
+    import("@/data/allPoemsLookup").then((m) => m.loadAllPoemsLookup());
+  }, []);
+
+  // First round auto start
   useEffect(() => {
     if (userLoaded && !target && !loadingTarget && !error) {
       startRound();
