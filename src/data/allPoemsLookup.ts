@@ -39,3 +39,137 @@ export function getPoemByKeyFast(key: string): PoemData | undefined {
 export async function loadAllPoemsLookup(): Promise<Map<string, PoemData>> {
   return _load();
 }
+
+export function isCacheLoaded(): boolean {
+  return _cache !== null;
+}
+
+export function cleanToken(s: string): string {
+  return s.replace(/[，。！？、；：""''（）【】《》〈〉〔〕—…·.!?,\s]/g, "");
+}
+
+export function countCharOverlap(s1: string, s2: string): number {
+  const chars = new Set(s1);
+  let count = 0;
+  for (const c of s2) {
+    if (chars.has(c)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+export function matchLocalToken(text: string, token: string): boolean {
+  if (text.includes(token)) return true;
+  if (token.length < 3) return false;
+  const wSize = token.length + 2;
+  let maxOverlap = 0;
+  for (let i = 0; i <= text.length - token.length; i++) {
+    const sub = text.slice(i, i + wSize);
+    const overlap = countCharOverlap(sub, token);
+    if (overlap > maxOverlap) {
+      maxOverlap = overlap;
+    }
+  }
+  const required = token.length <= 4 ? token.length - 1 : Math.floor(token.length * 0.8);
+  return maxOverlap >= required;
+}
+
+export function searchLocalCached(query: string, maxResults = 100): { poem: any; score: number }[] {
+  if (!_cache) return [];
+  const clean = query.trim();
+  if (!clean) return [];
+
+  // Split by whitespace
+  const tokens = clean.split(/\s+/).map(cleanToken).filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  const matchedList: { poem: any; score: number }[] = [];
+
+  for (const p of _cache.values()) {
+    let matchesAll = true;
+    let totalScore = 0;
+    let matchedLine = p.content[0] || "";
+    let matchedLineIndex = 0;
+
+    const normTitle = cleanToken(p.t);
+    const normAuthor = cleanToken(p.a);
+    const normDynasty = cleanToken(p.d);
+
+    for (const token of tokens) {
+      let tokenMatched = false;
+      let tokenScore = 0;
+
+      // 1. Check title
+      if (normTitle === token) {
+        tokenScore += 150;
+        tokenMatched = true;
+      } else if (matchLocalToken(normTitle, token)) {
+        tokenScore += 80;
+        tokenMatched = true;
+      }
+
+      // 2. Check author
+      if (normAuthor === token) {
+        tokenScore += 100;
+        tokenMatched = true;
+      } else if (matchLocalToken(normAuthor, token)) {
+        tokenScore += 50;
+        tokenMatched = true;
+      }
+
+      // 3. Check dynasty
+      if (normDynasty === token) {
+        tokenScore += 30;
+        tokenMatched = true;
+      }
+
+      // 4. Check lines
+      if (!tokenMatched) {
+        for (let i = 0; i < p.content.length; i++) {
+          const line = p.content[i];
+          const normLine = cleanToken(line);
+          if (normLine.includes(token)) {
+            tokenScore += 40;
+            tokenMatched = true;
+            matchedLine = line;
+            matchedLineIndex = i;
+            break;
+          } else if (matchLocalToken(normLine, token)) {
+            tokenScore += 20;
+            tokenMatched = true;
+            matchedLine = line;
+            matchedLineIndex = i;
+            break;
+          }
+        }
+      }
+
+      if (!tokenMatched) {
+        matchesAll = false;
+        break;
+      }
+      totalScore += tokenScore;
+    }
+
+    if (matchesAll) {
+      const pid = `${p.t.trim()}:${p.a.trim()}`;
+      matchedList.push({
+        poem: {
+          _id: pid,
+          name: p.t,
+          author: p.a,
+          dynasty: p.d,
+          content: p.content,
+          note: "",
+          matchedLine,
+          matchedLineIndex,
+        },
+        score: totalScore,
+      });
+    }
+  }
+
+  // Sort by score descending
+  return matchedList.sort((a, b) => b.score - a.score).slice(0, maxResults);
+}
