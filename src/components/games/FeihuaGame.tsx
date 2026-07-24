@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { CharPicker } from "@/components/ui/CharPicker";
 import { VoiceInput } from "@/components/ui/VoiceInput";
@@ -343,6 +343,19 @@ export function FeihuaGame() {
     botTurn(localSeenPoems);
   }, [selectedChar, localSeenPoems, botTurn]);
 
+  // Listen to Enter key when showing correct poem card to proceed automatically
+  useEffect(() => {
+    if (!showCard) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleNextForSameChar();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showCard, handleNextForSameChar]);
+
   const handleSwitchChar = useCallback(() => {
     setSelectedChar("");
     setCustomChar("");
@@ -479,8 +492,8 @@ export function FeihuaGame() {
               type="text"
               value={customChar}
               onChange={(e) => setCustomChar(e.target.value)}
-              placeholder="自拟单字（如：酒）"
-              className="input-chinese flex-1 text-center"
+              placeholder="请输入单个关键字（如：酒）"
+              className="input-chinese flex-[3] text-left px-4"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
@@ -501,7 +514,7 @@ export function FeihuaGame() {
                   setFeedback({ ok: false, msg: "请输入单个汉字作为关键字" });
                 }
               }}
-              className="btn-primary px-6"
+              className="btn-primary flex-1 px-4 text-center whitespace-nowrap"
             >
               开始
             </button>
