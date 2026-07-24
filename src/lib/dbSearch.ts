@@ -37,7 +37,7 @@ export async function searchOnline(
   if (!cleanQuery) return [];
 
   try {
-    let dbQuery = query;
+    let dbQuery = cleanQuery;
     if (cleanQuery.length >= 8) {
       dbQuery = cleanQuery.slice(0, cleanQuery.length >= 14 ? 7 : 5);
     }

@@ -208,8 +208,8 @@ export function FeihuaGame() {
     let matchedLines = results.filter((r) => r.matches.length > 0);
 
     if (matchedLines.length === 0) {
-      // 无行池精确匹配 → 直接在 Meilisearch 中精确搜索用户输入
-      const exactHits = await searchOnline(input, 15);
+      // 无行池精确匹配 → 直接在数据库中精确搜索用户输入（去掉标点符号）
+      const exactHits = await searchOnline(stripPunct(input), 15);
       
       // 过滤掉当前局已经用过的诗
       const filteredHits = exactHits.filter(h => {
