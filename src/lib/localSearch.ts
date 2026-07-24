@@ -1,24 +1,30 @@
 /**
- * localSearch.ts — Meilisearch 本地搜索代理。
- *
- * 保留原有签名不变，底层委托给 meilisearch.ts。
- * Meilisearch 实例由 scripts/start_meilisearch.sh 启动。
+ * localSearch.ts — Local database search agent (Supabase wrapper).
  */
 export {
   isLoaded,
   ensureLoaded,
   searchOnline,
+  generalSearch,
   searchByChar,
   getPoemByKeyExport,
-  searchInLibrary,
-  setInLibrary,
   getAllPoems,
   localSearch,
-} from './meilisearch'
+} from "./dbSearch";
 
 export type {
-  IndexedPoem,
   SearchResult,
   PoemResult,
   OnlinePoemResult,
-} from './meilisearch'
+} from "./dbSearch";
+
+export interface IndexedPoem {
+  k: string;   // key = "title:author"
+  r: number;   // rank
+  t: string;   // title
+  a: string;   // author
+  d: string;   // dynasty
+  id: string;  // same as k
+  c: string[]; // content lines
+  n: string;   // note
+}

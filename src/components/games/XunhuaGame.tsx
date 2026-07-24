@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useUser } from "@/lib/userContext";
 import { upgradeToLevel } from "@/lib/srs";
-import { searchOnline, getPoemByKeyExport, SearchResult } from "@/lib/meilisearch";
+import { searchOnline, getPoemByKeyExport, SearchResult } from "@/lib/localSearch";
 
 // ─── Game types ───────────────────────────────────────────────────────────────
 

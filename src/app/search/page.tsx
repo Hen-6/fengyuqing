@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useUser } from "@/lib/userContext";
-import { generalSearch, SearchResult } from "@/lib/meilisearch";
+import { generalSearch, SearchResult } from "@/lib/localSearch";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { setLevel } from "@/lib/srs";
 import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
