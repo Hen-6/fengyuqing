@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useUser } from "@/lib/userContext";
 import { upgradeToLevel } from "@/lib/srs";
 import { searchOnline, getPoemByKeyExport, SearchResult } from "@/lib/localSearch";
@@ -695,20 +696,40 @@ export function XunhuaGame() {
         </div>
       )}
 
-      {phase !== "playing" && (
-        <div style={{ display: "flex", gap: "8px", maxWidth: `${GRID * (CELL + 2)}px`, margin: "12px auto 0", justifyContent: "center" }}>
-          <button
-            onClick={handleNext}
-            style={{ flex: 1, padding: "10px", background: "#6aaa64", color: "#fff", border: "none", borderRadius: "4px", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}
+      {phase !== "playing" && target && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: `${GRID * (CELL + 2)}px`, margin: "12px auto 0" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={handleNext}
+              style={{ flex: 1, padding: "10px", background: "#6aaa64", color: "#fff", border: "none", borderRadius: "4px", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}
+            >
+              下一题
+            </button>
+            <button
+              onClick={handleRestart}
+              style={{ flex: 1, padding: "10px", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}
+            >
+              重新开始
+            </button>
+          </div>
+          <Link
+            href={`/search/?q=${encodeURIComponent(target.poemTitle + " " + target.poemAuthor)}`}
+            style={{
+              display: "block",
+              textAlign: "center",
+              padding: "10px",
+              background: "rgba(106, 170, 100, 0.08)",
+              color: "#6aaa64",
+              border: "1px dashed #6aaa64",
+              borderRadius: "4px",
+              fontWeight: "bold",
+              fontSize: "14px",
+              cursor: "pointer",
+              textDecoration: "none",
+            }}
           >
-            下一题
-          </button>
-          <button
-            onClick={handleRestart}
-            style={{ flex: 1, padding: "10px", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}
-          >
-            重新开始
-          </button>
+            📖 查看全诗 《{target.poemTitle}》
+          </Link>
         </div>
       )}
 

@@ -22,6 +22,18 @@ export default function SearchPage() {
     loadAllPoemsLookup().then(() => setAllLoaded(true));
   }, []);
 
+  // Read initial query from URL search params
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("q");
+      if (q) {
+        setQuery(q);
+        setDebouncedQuery(q);
+      }
+    }
+  }, []);
+
   // Debounce input
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -103,6 +115,7 @@ export default function SearchPage() {
                 result={res}
                 dynasty={dynasty}
                 currentLevel={store.poems[pid]?.level ?? 1}
+                autoExpand={results.length === 1}
                 onSetLevel={(lvl) => {
                   if (lvl === 1) {
                     deletePoemProgress(pid);
@@ -135,13 +148,21 @@ function SearchResultCard({
   dynasty,
   currentLevel,
   onSetLevel,
+  autoExpand,
 }: {
   result: SearchResult;
   dynasty: string;
   currentLevel: number;
   onSetLevel: (level: number) => void;
+  autoExpand?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand ?? false);
+
+  useEffect(() => {
+    if (autoExpand) {
+      setExpanded(true);
+    }
+  }, [autoExpand]);
 
   return (
     <div className="rounded-xl border border-border bg-surface overflow-hidden transition hover:border-accent">
