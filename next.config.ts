@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
         minimize: false,
       };
     }
+    // Fix for @jobinjia/shuimo-core dynamic wasm imports in nextjs
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      './wasm/shuimo_noise.js': false,
+      './wasm/shuimo_noise_bg.wasm': false,
+    };
     return config;
   },
 };

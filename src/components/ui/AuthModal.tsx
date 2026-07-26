@@ -10,6 +10,7 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,7 +24,13 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setMessage("");
 
     try {
-      if (isSignUp) {
+      if (isForgotPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+        });
+        if (error) throw error;
+        setMessage("密码重置链接已发送！请检查您的邮箱。");
+      } else if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -58,7 +65,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         </button>
 
         <h2 className="text-xl font-bold text-ink text-center mb-6 brush-title">
-          {isSignUp ? "创立云阁" : "登临云阁"}
+          {isForgotPassword ? "重置暗号" : isSignUp ? "创立云阁" : "登临云阁"}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -76,19 +83,21 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-text-muted mb-1">
-              暗号 (密码)
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full rounded-xl border border-border bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-text-muted focus:border-accent focus:outline-none transition"
-            />
-          </div>
+          {!isForgotPassword && (
+            <div>
+              <label className="block text-xs font-semibold text-text-muted mb-1">
+                暗号 (密码)
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full rounded-xl border border-border bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-text-muted focus:border-accent focus:outline-none transition"
+              />
+            </div>
+          )}
 
           {message && (
             <p className="text-xs text-center text-accent bg-accent/10 py-2 px-3 rounded-lg border border-accent/20">
@@ -101,16 +110,41 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             disabled={loading}
             className="w-full py-2.5 rounded-xl bg-ink text-white font-medium text-sm hover:opacity-90 active:scale-[0.98] transition shadow-md disabled:opacity-50"
           >
-            {loading ? "寻章中..." : isSignUp ? "创立账号" : "登录同步"}
+            {loading ? "寻章中..." : isForgotPassword ? "发送重置链接" : isSignUp ? "创立账号" : "登录同步"}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
+        <div className="mt-4 flex flex-col gap-2 text-center">
+          {!isForgotPassword && (
+            <button
+              onClick={() => {
+                setIsForgotPassword(true);
+                setMessage("");
+              }}
+              type="button"
+              className="text-xs text-text-muted hover:text-accent hover:underline transition"
+            >
+              忘记暗号？找回密码
+            </button>
+          )}
           <button
-            onClick={() => setIsSignUp(!isSignUp)}
+            onClick={() => {
+              if (isForgotPassword) {
+                setIsForgotPassword(false);
+                setIsSignUp(false);
+              } else {
+                setIsSignUp(!isSignUp);
+              }
+              setMessage("");
+            }}
+            type="button"
             className="text-xs text-accent hover:underline transition"
           >
-            {isSignUp ? "已有云阁？直接登录" : "未立云阁？点击注册"}
+            {isForgotPassword
+              ? "返回登录"
+              : isSignUp
+              ? "已有云阁？直接登录"
+              : "未立云阁？点击注册"}
           </button>
         </div>
       </div>
