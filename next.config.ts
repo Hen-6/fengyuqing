@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   // Force webpack to transpile @jobinjia/shuimo-core (skip SWC, faster)
   transpilePackages: ["@jobinjia/shuimo-core"],
   turbopack: {},
-  webpack: (config, { dev, isServer }) => {
+  webpack: (config, { dev, isServer, webpack }) => {
     if (!dev && !isServer) {
       config.optimization = {
         ...config.optimization,
@@ -23,11 +23,14 @@ const nextConfig: NextConfig = {
       };
     }
     // Fix for @jobinjia/shuimo-core dynamic wasm imports in nextjs
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      './wasm/shuimo_noise.js': false,
-      './wasm/shuimo_noise_bg.wasm': false,
-    };
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /wasm\/shuimo_noise\.js/,
+      })
+    );
+    // Suppress Webpack's "Critical dependency: the request of a dependency is an expression" error
+    config.module.exprContextCritical = false;
+
     return config;
   },
 };
