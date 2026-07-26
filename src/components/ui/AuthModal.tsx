@@ -26,7 +26,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       if (isForgotPassword) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin,
+          redirectTo: `${window.location.origin}/update-password`,
         });
         if (error) throw error;
         setMessage("密码重置链接已发送！请检查您的邮箱。");
