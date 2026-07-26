@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 interface AuthModalProps {
@@ -11,10 +12,13 @@ interface AuthModalProps {
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const router = useRouter();
 
   if (!isOpen) return null;
 
@@ -24,12 +28,23 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setMessage("");
 
     try {
-      if (isForgotPassword) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/update-password`,
+      if (isForgotPassword && otpSent) {
+        // Step 2: Verify the OTP
+        const { error } = await supabase.auth.verifyOtp({
+          email,
+          token: otp,
+          type: 'recovery'
         });
         if (error) throw error;
-        setMessage("密码重置链接已发送！请检查您的邮箱。");
+        
+        onClose();
+        router.push("/update-password");
+      } else if (isForgotPassword && !otpSent) {
+        // Step 1: Request the OTP email
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        if (error) throw error;
+        setOtpSent(true);
+        setMessage("验证码已发送！请检查您的邮箱。");
       } else if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
@@ -79,9 +94,26 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="yourname@domain.com"
               required
-              className="w-full rounded-xl border border-border bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-text-muted focus:border-accent focus:outline-none transition"
+              disabled={otpSent}
+              className="w-full rounded-xl border border-border bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-text-muted focus:border-accent focus:outline-none transition disabled:opacity-50"
             />
           </div>
+
+          {isForgotPassword && otpSent && (
+            <div>
+              <label className="block text-xs font-semibold text-text-muted mb-1">
+                6位验证码 (OTP)
+              </label>
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="123456"
+                required
+                className="w-full rounded-xl border border-border bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-text-muted focus:border-accent focus:outline-none transition tracking-widest text-center font-mono"
+              />
+            </div>
+          )}
 
           {!isForgotPassword && (
             <div>
@@ -110,7 +142,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             disabled={loading}
             className="w-full py-2.5 rounded-xl bg-ink text-white font-medium text-sm hover:opacity-90 active:scale-[0.98] transition shadow-md disabled:opacity-50"
           >
-            {loading ? "寻章中..." : isForgotPassword ? "发送重置链接" : isSignUp ? "创立账号" : "登录同步"}
+            {loading ? "处理中..." : isForgotPassword ? (otpSent ? "验证代码" : "发送重置验证码") : isSignUp ? "创立账号" : "登录同步"}
           </button>
         </form>
 
@@ -132,6 +164,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               if (isForgotPassword) {
                 setIsForgotPassword(false);
                 setIsSignUp(false);
+                setOtpSent(false);
+                setOtp("");
               } else {
                 setIsSignUp(!isSignUp);
               }
