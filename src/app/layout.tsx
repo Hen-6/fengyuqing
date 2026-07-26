@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import "./globals.css";
 import ShanShuaiBackground from "@/components/ShanShuiBackground";
 import { Providers } from "@/components/Providers";
