@@ -7,7 +7,7 @@ import { VoiceInput } from "@/components/ui/VoiceInput";
 import { OnlinePoemResult, searchOnline, searchByChar, getPoemByKeyExport } from "@/lib/localSearch";
 import { useUser } from "@/lib/userContext";
 import { usePoems } from "@/components/PoemsContext";
-import { isVoiceSupported, startVoice, stopVoice } from "@/lib/voice";
+import { SenseVoiceRecorder } from "@/lib/senseVoiceRecorder";
 
 interface BotPoem {
   poem: OnlinePoemResult;
@@ -44,7 +44,12 @@ export function FeihuaGame() {
   const [customChar, setCustomChar] = useState("");
   const [phase, setPhase] = useState<"pick" | "playing" | "summary">("pick");
   const [voiceMode, setVoiceMode] = useState(false);
-  const [voiceSupported] = useState(isVoiceSupported);
+  const [voiceSupported] = useState(
+    typeof window !== "undefined" &&
+    !!navigator.mediaDevices &&
+    !!window.MediaRecorder &&
+    !!(window.AudioContext || (window as any).webkitAudioContext)
+  );
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
   const [userInput, setUserInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -360,13 +365,7 @@ export function FeihuaGame() {
   }, [showCard, handleNextForSameChar]);
 
   const toggleVoiceMode = useCallback(() => {
-    setVoiceMode(prev => {
-      const next = !prev;
-      if (!next) {
-        stopVoice();
-      }
-      return next;
-    });
+    setVoiceMode(prev => !prev);
   }, []);
 
   const handleAcceptHitVoiceMode = useCallback(async (poem: OnlinePoemResult, userLine: string) => {
@@ -476,34 +475,20 @@ export function FeihuaGame() {
     submitTextVoiceModeRef.current = submitTextVoiceMode;
   }, [submitTextVoiceMode]);
 
-  // Keep speech recognition running continuously while in Voice Mode
+  // Keep SenseVoice continuous recording running while in Voice Mode
   useEffect(() => {
     if (!voiceMode || phase !== "playing") {
       return;
     }
 
-    let active = true;
+    const recorder = new SenseVoiceRecorder((text) => {
+      submitTextVoiceModeRef.current(text);
+    });
 
-    const startContinuousListening = async () => {
-      await new Promise(r => setTimeout(r, 100));
-      if (!active) return;
-
-      const { success } = await startVoice((transcript, isFinal) => {
-        if (!active) return;
-        if (isFinal) {
-          submitTextVoiceModeRef.current(transcript);
-        }
-      });
-      if (!success && active) {
-        console.warn("[voice] Failed to start continuous voice recognition");
-      }
-    };
-
-    startContinuousListening();
+    recorder.start();
 
     return () => {
-      active = false;
-      stopVoice();
+      recorder.stop();
     };
   }, [voiceMode, phase]);
 
@@ -520,7 +505,6 @@ export function FeihuaGame() {
     setLocalSeenPoems(new Set());
     setMultiLineInput(null);
     setVoiceMode(false);
-    stopVoice();
     setPhase("pick");
   }, []);
 
@@ -565,7 +549,6 @@ export function FeihuaGame() {
 
   const handleEndGame = useCallback(async () => {
     setVoiceMode(false);
-    stopVoice();
     setPhase("summary");
     setLoadingSummary(true);
 
