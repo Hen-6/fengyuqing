@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { CharPicker } from "@/components/ui/CharPicker";
 import { VoiceInput } from "@/components/ui/VoiceInput";
 import { OnlinePoemResult, searchOnline, searchByChar, getPoemByKeyExport } from "@/lib/localSearch";
 import { useUser } from "@/lib/userContext";
 import { usePoems } from "@/components/PoemsContext";
+import { isVoiceSupported, startVoice, stopVoice } from "@/lib/voice";
 
 interface BotPoem {
   poem: OnlinePoemResult;
@@ -42,6 +43,8 @@ export function FeihuaGame() {
   const [selectedChar, setSelectedChar] = useState<string>("");
   const [customChar, setCustomChar] = useState("");
   const [phase, setPhase] = useState<"pick" | "playing" | "summary">("pick");
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceSupported] = useState(isVoiceSupported);
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
   const [userInput, setUserInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -356,6 +359,154 @@ export function FeihuaGame() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showCard, handleNextForSameChar]);
 
+  const toggleVoiceMode = useCallback(() => {
+    setVoiceMode(prev => {
+      const next = !prev;
+      if (!next) {
+        stopVoice();
+      }
+      return next;
+    });
+  }, []);
+
+  const handleAcceptHitVoiceMode = useCallback(async (poem: OnlinePoemResult, userLine: string) => {
+    const pid = `${poem.name.trim()}:${poem.author.trim()}`;
+    if (localSeenPoems.has(pid)) return;
+
+    markPoemAnswered(pid);
+    setFeedback({ ok: true, msg: `✓ 成功匹配：《${poem.name}》— ${poem.author}` });
+    setTimeout(() => setFeedback(prev => prev?.ok ? null : prev), 3000);
+
+    const entry: RoundEntry = {
+      char: selectedChar,
+      botPoem: botPoem!,
+      userPoem: poem,
+      userLine,
+      skipped: false,
+    };
+
+    setHistory((prev) => [entry, ...prev]);
+    setCurrentEntry(entry);
+
+    const newSeen = new Set([...localSeenPoems, pid]);
+    setSeenPoemIds(newSeen);
+    setLocalSeenPoems(newSeen);
+
+    // Trigger computer's turn after a brief delay
+    setTimeout(() => {
+      botTurn(newSeen);
+    }, 1500);
+  }, [selectedChar, botPoem, markPoemAnswered, localSeenPoems, botTurn]);
+
+  const submitTextVoiceMode = useCallback(async (text: string) => {
+    const input = text.trim();
+    if (!input) return;
+    const cleanInput = stripPunct(input);
+    if (cleanInput.length < 4) {
+      setFeedback({ ok: false, msg: `“${input}”字数太少` });
+      setTimeout(() => setFeedback(prev => prev?.msg.includes("字数太少") ? null : prev), 3000);
+      return;
+    }
+
+    if (!cleanInput.includes(selectedChar)) {
+      setFeedback({ ok: false, msg: `“${input}”未包含关键字「${selectedChar}」` });
+      setTimeout(() => setFeedback(prev => prev?.msg.includes("未包含关键字") ? null : prev), 3000);
+      return;
+    }
+
+    const rawLines = input.split(/[\n\r]+|([。！？\.]+)/).filter(Boolean);
+    const userLines = rawLines
+      .map((l) => l.trim())
+      .filter((l) => stripPunct(l).length >= 4);
+
+    const poolToSearch = linePool.filter(
+      (item) => !(item.poem.name.trim() === botPoem!.poem.name.trim()
+        && item.poem.author.trim() === botPoem!.poem.author.trim()
+        && item.line === botPoem!.cleanLine)
+    );
+
+    let matchedLines = userLines.map((ul) => ({
+      line: ul,
+      matches: poolToSearch.filter((item) => stripPunct(item.line) === stripPunct(ul)),
+    })).filter((r) => r.matches.length > 0);
+
+    matchedLines = matchedLines.map(ml => ({
+      ...ml,
+      matches: ml.matches.filter(m => {
+        const pid = `${m.poem.name.trim()}:${m.poem.author.trim()}`;
+        return !localSeenPoems.has(pid);
+      })
+    })).filter((r) => r.matches.length > 0);
+
+    if (matchedLines.length > 0) {
+      const match = matchedLines[0].matches[0];
+      await handleAcceptHitVoiceMode(match.poem, match.line);
+      return;
+    }
+
+    const exactHits = await searchOnline(cleanInput, 15);
+    const filteredHits = exactHits.filter(h => {
+      const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
+      return !localSeenPoems.has(pid);
+    });
+
+    if (filteredHits.length > 0) {
+      const match = filteredHits[0].poem;
+      await handleAcceptHitVoiceMode(match, match.matchedLine || match.content[0]);
+      return;
+    }
+
+    const duplicateHits = exactHits.filter(h => {
+      const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
+      return localSeenPoems.has(pid);
+    });
+
+    if (duplicateHits.length > 0) {
+      setFeedback({ ok: false, msg: `“${input}”已在本局说过` });
+      setTimeout(() => setFeedback(prev => prev?.msg.includes("已在本局说过") ? null : prev), 3000);
+      return;
+    }
+
+    setFeedback({ ok: false, msg: `未找到诗句“${input}”` });
+    setTimeout(() => setFeedback(prev => prev?.msg.includes("未找到诗句") ? null : prev), 3000);
+  }, [selectedChar, botPoem, localSeenPoems, linePool, handleAcceptHitVoiceMode]);
+
+  const submitTextVoiceModeRef = useRef(submitTextVoiceMode);
+  useEffect(() => {
+    submitTextVoiceModeRef.current = submitTextVoiceMode;
+  }, [submitTextVoiceMode]);
+
+  // Keep speech recognition running continuously while in Voice Mode
+  useEffect(() => {
+    if (!voiceMode || phase !== "playing") {
+      return;
+    }
+
+    let active = true;
+
+    const startContinuousListening = async () => {
+      await new Promise(r => setTimeout(r, 100));
+      if (!active) return;
+
+      const { success } = await startVoice((transcript, isFinal) => {
+        if (!active) return;
+        if (isFinal) {
+          submitTextVoiceModeRef.current(transcript);
+        }
+      });
+      if (!success && active) {
+        console.warn("[voice] Failed to start continuous voice recognition");
+      }
+    };
+
+    startContinuousListening();
+
+    return () => {
+      active = false;
+      stopVoice();
+    };
+  }, [voiceMode, phase]);
+
   const handleSwitchChar = useCallback(() => {
     setSelectedChar("");
     setCustomChar("");
@@ -368,6 +519,8 @@ export function FeihuaGame() {
     setSelectModal([]);
     setLocalSeenPoems(new Set());
     setMultiLineInput(null);
+    setVoiceMode(false);
+    stopVoice();
     setPhase("pick");
   }, []);
 
@@ -411,6 +564,8 @@ export function FeihuaGame() {
   }, [botPoem, selectedChar, handleNextForSameChar]);
 
   const handleEndGame = useCallback(async () => {
+    setVoiceMode(false);
+    stopVoice();
     setPhase("summary");
     setLoadingSummary(true);
 
@@ -537,6 +692,28 @@ export function FeihuaGame() {
           <div className="text-center">
             <div className="text-xs text-text-muted mb-1">当前关键字</div>
             <div className="text-5xl font-bold text-accent">{selectedChar}</div>
+            {voiceSupported && (
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <button
+                  onClick={toggleVoiceMode}
+                  className={`
+                    flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all duration-200
+                    ${voiceMode
+                      ? "border-accent bg-accent/10 text-accent animate-pulse"
+                      : "border-border bg-surface text-text-muted hover:border-accent hover:text-accent"
+                    }
+                  `}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                  {voiceMode ? "自动语音模式：开启" : "自动语音模式：关闭"}
+                </button>
+              </div>
+            )}
           </div>
 
 
@@ -689,50 +866,82 @@ export function FeihuaGame() {
           {/* 输入区 */}
           {!showCard ? (
             <>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  placeholder={`输入含「${selectedChar}」的诗句`}
-                  className="input-chinese flex-1 text-center"
-                  autoFocus
-                />
-                <VoiceInput onResult={handleVoiceResult} />
-              </div>
+              {voiceMode ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center justify-center p-6 border border-dashed border-accent/40 bg-accent/5 rounded-2xl">
+                    <div className="h-12 w-12 flex items-center justify-center rounded-full bg-accent text-white mb-2 animate-bounce">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-accent mb-1">自动语音对答模式开启中</p>
+                    <p className="text-xs text-text-muted text-center max-w-xs">
+                      请直接念出含「{selectedChar}」的诗句，系统将自动识别并开启下一轮
+                    </p>
+                  </div>
 
-              {feedback && !feedback.ok && (
-                <p className="text-center text-sm text-accent">{feedback.msg}</p>
-              )}
+                  {feedback && (
+                    <p className={`text-center text-sm font-medium ${feedback.ok ? "text-correct" : "text-accent animate-pulse"}`}>
+                      {feedback.msg}
+                    </p>
+                  )}
 
-              {similarPoems.length > 0 && (
-                <div className="rounded-xl border border-border bg-surface p-4">
-                  <p className="mb-2 text-xs text-text-muted text-center">最相近的诗句：</p>
-                  <div className="space-y-2">
-                    {similarPoems.map((item, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => selectSimilarPoem(item)}
-                        className="w-full text-left rounded-lg border border-border px-3 py-2 hover:border-accent hover:bg-accent-light transition-colors"
-                      >
-                        <div className="text-sm text-ink">
-                          {item.content[item.matchedLineIndex] || item.matchedLine}
-                        </div>
-                        <div className="text-xs text-text-muted">
-                          《{item.name}》— {item.author}
-                        </div>
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={toggleVoiceMode} className="btn-secondary">切换回键盘输入</button>
+                    <button onClick={handleEndGame} className="btn-secondary" style={{ backgroundColor: 'rgba(192,57,43,0.06)', color: 'var(--accent)', borderColor: 'rgba(192,57,43,0.2)' }}>结束游戏</button>
                   </div>
                 </div>
-              )}
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                      placeholder={`输入含「${selectedChar}」的诗句`}
+                      className="input-chinese flex-1 text-center"
+                      autoFocus
+                    />
+                    <VoiceInput onResult={handleVoiceResult} />
+                  </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <button onClick={handleSubmit} className="btn-primary">提交</button>
-                <button onClick={handleSkip} className="btn-secondary" style={{ backgroundColor: 'rgba(0,0,0,0.04)', color: 'var(--text-muted)' }}>跳过</button>
-                <button onClick={handleEndGame} className="btn-secondary" style={{ backgroundColor: 'rgba(192,57,43,0.06)', color: 'var(--accent)', borderColor: 'rgba(192,57,43,0.2)' }}>结束游戏</button>
-              </div>
+                  {feedback && !feedback.ok && (
+                    <p className="text-center text-sm text-accent">{feedback.msg}</p>
+                  )}
+
+                  {similarPoems.length > 0 && (
+                    <div className="rounded-xl border border-border bg-surface p-4">
+                      <p className="mb-2 text-xs text-text-muted text-center">最相近的诗句：</p>
+                      <div className="space-y-2">
+                        {similarPoems.map((item, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => selectSimilarPoem(item)}
+                            className="w-full text-left rounded-lg border border-border px-3 py-2 hover:border-accent hover:bg-accent-light transition-colors"
+                          >
+                            <div className="text-sm text-ink">
+                              {item.content[item.matchedLineIndex] || item.matchedLine}
+                            </div>
+                            <div className="text-xs text-text-muted">
+                              《{item.name}》— {item.author}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <button onClick={handleSubmit} className="btn-primary">提交</button>
+                    <button onClick={handleSkip} className="btn-secondary" style={{ backgroundColor: 'rgba(0,0,0,0.04)', color: 'var(--text-muted)' }}>跳过</button>
+                    <button onClick={handleEndGame} className="btn-secondary" style={{ backgroundColor: 'rgba(192,57,43,0.06)', color: 'var(--accent)', borderColor: 'rgba(192,57,43,0.2)' }}>结束游戏</button>
+                  </div>
+                </>
+              )}
             </>
           ) : (
             <>

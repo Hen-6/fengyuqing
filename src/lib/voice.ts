@@ -20,11 +20,16 @@ function createWebSpeechEngine(): VoiceEngine | null {
     (window as unknown as { SpeechRecognition?: { new (): unknown } }).SpeechRecognition;
   if (!SR) return null;
 
+  let currentRec: any = null;
+
   return {
     isSupported: () => true,
     start(onResult) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (currentRec) {
+        try { currentRec.abort(); } catch (e) {}
+      }
       const recognition = new SR() as any;
+      currentRec = recognition;
       recognition.lang = "zh-CN";
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -33,7 +38,7 @@ function createWebSpeechEngine(): VoiceEngine | null {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (event: any) => {
         const results = event.results;
-        for (let i = 0; i < results.length; i++) {
+        for (let i = event.resultIndex; i < results.length; i++) {
           const r = results[i];
           const transcript = r[0].transcript.replace(/\s/g, "");
           if (transcript) {
@@ -48,13 +53,24 @@ function createWebSpeechEngine(): VoiceEngine | null {
       };
 
       recognition.onend = () => {
-        // 允许重新启动
+        if (isListening && currentRec) {
+          try {
+            currentRec.start();
+          } catch (e) {
+            console.warn("[voice] Web Speech restart failed:", e);
+          }
+        }
       };
 
       recognition.start();
     },
     stop() {
-      // access via closure variable
+      if (currentRec) {
+        try {
+          currentRec.abort();
+        } catch (e) {}
+        currentRec = null;
+      }
     },
   };
 }
