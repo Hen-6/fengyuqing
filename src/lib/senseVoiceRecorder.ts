@@ -47,7 +47,7 @@ export class SenseVoiceRecorder {
         formData.append('file', audioBlob, 'speech.webm');
         
         try {
-          const res = await fetch('/api/asr', {
+          const res = await fetch('http://localhost:8000/api/asr', {
             method: 'POST',
             body: formData,
           });

@@ -8,6 +8,7 @@ import { OnlinePoemResult, searchOnline, searchByChar, getPoemByKeyExport } from
 import { useUser } from "@/lib/userContext";
 import { usePoems } from "@/components/PoemsContext";
 import { SenseVoiceRecorder } from "@/lib/senseVoiceRecorder";
+import { isVoiceSupported, startVoice, stopVoice } from "@/lib/voice";
 
 interface BotPoem {
   poem: OnlinePoemResult;
@@ -44,11 +45,14 @@ export function FeihuaGame() {
   const [customChar, setCustomChar] = useState("");
   const [phase, setPhase] = useState<"pick" | "playing" | "summary">("pick");
   const [voiceMode, setVoiceMode] = useState(false);
+  const [useLocalASR, setUseLocalASR] = useState(false);
   const [voiceSupported] = useState(
-    typeof window !== "undefined" &&
-    !!navigator.mediaDevices &&
-    !!window.MediaRecorder &&
-    !!(window.AudioContext || (window as any).webkitAudioContext)
+    isVoiceSupported || (
+      typeof window !== "undefined" &&
+      !!navigator.mediaDevices &&
+      !!window.MediaRecorder &&
+      !!(window.AudioContext || (window as any).webkitAudioContext)
+    )
   );
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
   const [userInput, setUserInput] = useState("");
@@ -475,20 +479,66 @@ export function FeihuaGame() {
     submitTextVoiceModeRef.current = submitTextVoiceMode;
   }, [submitTextVoiceMode]);
 
-  // Keep SenseVoice continuous recording running while in Voice Mode
+  // Keep ASR continuous recording running while in Voice Mode
   useEffect(() => {
     if (!voiceMode || phase !== "playing") {
       return;
     }
 
-    const recorder = new SenseVoiceRecorder((text) => {
-      submitTextVoiceModeRef.current(text);
-    });
+    let active = true;
+    let recorder: SenseVoiceRecorder | null = null;
+    let fallbackActive = false;
 
-    recorder.start();
+    const setupVoice = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/asr", {
+          method: "GET",
+          mode: "cors",
+          signal: AbortSignal.timeout(1000)
+        });
+        const data = await res.json();
+        if (!active) return;
+
+        if (data.status === "online") {
+          console.log("[ASR] Local SenseVoice server detected, launching high-precision local voice mode...");
+          setUseLocalASR(true);
+          recorder = new SenseVoiceRecorder((text) => {
+            if (active) submitTextVoiceModeRef.current(text);
+          });
+          await recorder.start();
+        } else {
+          console.log("[ASR] Local ASR server offline. Falling back to browser native Web Speech API...");
+          setUseLocalASR(false);
+          fallbackActive = true;
+          startVoice((transcript, isFinal) => {
+            if (active && isFinal) {
+              submitTextVoiceModeRef.current(transcript);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("[ASR] Health check error. Falling back to browser native Web Speech API...", err);
+        if (!active) return;
+        setUseLocalASR(false);
+        fallbackActive = true;
+        startVoice((transcript, isFinal) => {
+          if (active && isFinal) {
+            submitTextVoiceModeRef.current(transcript);
+          }
+        });
+      }
+    };
+
+    setupVoice();
 
     return () => {
-      recorder.stop();
+      active = false;
+      if (recorder) {
+        recorder.stop();
+      }
+      if (fallbackActive) {
+        stopVoice();
+      }
     };
   }, [voiceMode, phase]);
 

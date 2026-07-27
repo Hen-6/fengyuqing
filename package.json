@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "python3 scripts/asr_server.py & next dev",
     "prebuild": "npx tsx scripts/generate-background.ts",
     "build": "next build --webpack",
     "build:turbo": "next build --turbopack",

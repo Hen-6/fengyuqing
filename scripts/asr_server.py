@@ -56,6 +56,10 @@ except Exception as e:
         print(f"Error: Failed to load model on CPU: {ex}")
         sys.exit(1)
 
+@app.get("/api/asr")
+async def health_check():
+    return {"status": "online"}
+
 @app.post("/api/asr")
 async def transcribe(file: UploadFile = File(...)):
     # Create a temporary file to save the uploaded audio
