@@ -7,7 +7,7 @@ import { VoiceInput } from "@/components/ui/VoiceInput";
 import { OnlinePoemResult, searchOnline, searchByChar, getPoemByKeyExport } from "@/lib/localSearch";
 import { useUser } from "@/lib/userContext";
 import { usePoems } from "@/components/PoemsContext";
-import { SenseVoiceRecorder } from "@/lib/senseVoiceRecorder";
+import { pinyin } from "pinyin-pro";
 import { isVoiceSupported, startVoice, stopVoice } from "@/lib/voice";
 
 interface BotPoem {
@@ -45,15 +45,7 @@ export function FeihuaGame() {
   const [customChar, setCustomChar] = useState("");
   const [phase, setPhase] = useState<"pick" | "playing" | "summary">("pick");
   const [voiceMode, setVoiceMode] = useState(false);
-  const [useLocalASR, setUseLocalASR] = useState(false);
-  const [voiceSupported] = useState(
-    isVoiceSupported || (
-      typeof window !== "undefined" &&
-      !!navigator.mediaDevices &&
-      !!window.MediaRecorder &&
-      !!(window.AudioContext || (window as any).webkitAudioContext)
-    )
-  );
+  const [voiceSupported] = useState(isVoiceSupported);
   const [botPoem, setBotPoem] = useState<BotPoem | null>(null);
   const [userInput, setUserInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -404,6 +396,23 @@ export function FeihuaGame() {
   const submitTextVoiceMode = useCallback(async (text: string) => {
     const input = text.trim();
     if (!input) return;
+
+    const getCleanPinyin = (str: string) => {
+      try {
+        return pinyin(str, { toneType: "none", type: "array" })
+          .map(p => p.toLowerCase().replace(/[^a-z0-9]/g, ""))
+          .join("");
+      } catch (e) {
+        return "";
+      }
+    };
+
+    const matchPinyin = (a: string, b: string) => {
+      const pA = getCleanPinyin(a);
+      const pB = getCleanPinyin(b);
+      return pA && pB && pA === pB;
+    };
+
     const cleanInput = stripPunct(input);
     if (cleanInput.length < 4) {
       setFeedback({ ok: false, msg: `“${input}”字数太少` });
@@ -411,7 +420,10 @@ export function FeihuaGame() {
       return;
     }
 
-    if (!cleanInput.includes(selectedChar)) {
+    const keywordPinyin = getCleanPinyin(selectedChar);
+    const hasKeyword = cleanInput.includes(selectedChar) || getCleanPinyin(cleanInput).includes(keywordPinyin);
+
+    if (!hasKeyword) {
       setFeedback({ ok: false, msg: `“${input}”未包含关键字「${selectedChar}」` });
       setTimeout(() => setFeedback(prev => prev?.msg.includes("未包含关键字") ? null : prev), 3000);
       return;
@@ -430,7 +442,11 @@ export function FeihuaGame() {
 
     let matchedLines = userLines.map((ul) => ({
       line: ul,
-      matches: poolToSearch.filter((item) => stripPunct(item.line) === stripPunct(ul)),
+      matches: poolToSearch.filter((item) => {
+        const cleanItem = stripPunct(item.line);
+        const cleanUser = stripPunct(ul);
+        return cleanItem === cleanUser || matchPinyin(cleanItem, cleanUser);
+      }),
     })).filter((r) => r.matches.length > 0);
 
     matchedLines = matchedLines.map(ml => ({
@@ -479,66 +495,34 @@ export function FeihuaGame() {
     submitTextVoiceModeRef.current = submitTextVoiceMode;
   }, [submitTextVoiceMode]);
 
-  // Keep ASR continuous recording running while in Voice Mode
+  // Keep native speech recognition running continuously while in Voice Mode
   useEffect(() => {
     if (!voiceMode || phase !== "playing") {
       return;
     }
 
     let active = true;
-    let recorder: SenseVoiceRecorder | null = null;
-    let fallbackActive = false;
 
-    const setupVoice = async () => {
-      try {
-        const res = await fetch("http://localhost:8000/api/asr", {
-          method: "GET",
-          mode: "cors",
-          signal: AbortSignal.timeout(1000)
-        });
-        const data = await res.json();
+    const startContinuousListening = async () => {
+      await new Promise(r => setTimeout(r, 100));
+      if (!active) return;
+
+      const { success } = await startVoice((transcript, isFinal) => {
         if (!active) return;
-
-        if (data.status === "online") {
-          console.log("[ASR] Local SenseVoice server detected, launching high-precision local voice mode...");
-          setUseLocalASR(true);
-          recorder = new SenseVoiceRecorder((text) => {
-            if (active) submitTextVoiceModeRef.current(text);
-          });
-          await recorder.start();
-        } else {
-          console.log("[ASR] Local ASR server offline. Falling back to browser native Web Speech API...");
-          setUseLocalASR(false);
-          fallbackActive = true;
-          startVoice((transcript, isFinal) => {
-            if (active && isFinal) {
-              submitTextVoiceModeRef.current(transcript);
-            }
-          });
+        if (isFinal) {
+          submitTextVoiceModeRef.current(transcript);
         }
-      } catch (err) {
-        console.warn("[ASR] Health check error. Falling back to browser native Web Speech API...", err);
-        if (!active) return;
-        setUseLocalASR(false);
-        fallbackActive = true;
-        startVoice((transcript, isFinal) => {
-          if (active && isFinal) {
-            submitTextVoiceModeRef.current(transcript);
-          }
-        });
+      });
+      if (!success && active) {
+        console.warn("[voice] Failed to start continuous voice recognition");
       }
     };
 
-    setupVoice();
+    startContinuousListening();
 
     return () => {
       active = false;
-      if (recorder) {
-        recorder.stop();
-      }
-      if (fallbackActive) {
-        stopVoice();
-      }
+      stopVoice();
     };
   }, [voiceMode, phase]);
 
