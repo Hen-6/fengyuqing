@@ -46,145 +46,89 @@ export async function searchOnline(
   const tokens = cleanQuery.split(/\s+/).map(t => stripPunct(t)).filter(Boolean);
   if (tokens.length === 0) return [];
 
-  try {
-    let results: any[] = [];
-    let usedFuzzy = false;
+  let finalResults: SearchResult[] = [];
 
-    // 1. Try fuzzy search RPC first (requires running supabase-fuzzy-search.sql)
+  try {
+    // 1. Try fuzzy search RPC for Title/Author (Instant via pg_trgm indices)
     const { data: fuzzyData, error: fuzzyError } = await supabase.rpc("search_poems_fuzzy", {
       query_text: stripPunct(cleanQuery),
-      max_results: Math.max(maxResults * 2, 80),
+      max_results: maxResults,
     });
 
-    if (!fuzzyError && fuzzyData) {
-      results = fuzzyData;
-      usedFuzzy = true;
-    } else {
-      // 2. Fallback to old strict search logic
-      if (tokens.length >= 2) {
-        const t1 = tokens[0];
-        const t2 = tokens[1];
-        const { data, error } = await supabase
-          .from("poems")
-          .select("id, title, author, dynasty, lines")
-          .or(`and(title.ilike.%${t1}%,author.ilike.%${t2}%),and(title.ilike.%${t2}%,author.ilike.%${t1}%)`)
-          .limit(maxResults * 2);
-        if (!error && data) results = data;
-      }
-
-      if (results.length === 0) {
-        const primaryToken = tokens[0];
-        let dbQuery = primaryToken;
-        if (primaryToken.length >= 8) {
-          dbQuery = primaryToken.slice(0, primaryToken.length >= 14 ? 7 : 5);
-        }
-        const { data, error } = await supabase.rpc("search_poems", {
-          query_text: dbQuery,
-          max_results: Math.max(maxResults * 2, 80),
+    if (!fuzzyError && fuzzyData && fuzzyData.length > 0) {
+      for (const r of fuzzyData) {
+        finalResults.push({
+          poem: {
+            _id: r.id,
+            name: r.title,
+            author: r.author,
+            dynasty: r.dynasty || "",
+            content: r.lines || [],
+            note: "",
+            matchedLine: r.lines?.[0] || "",
+            matchedLineIndex: 0,
+          },
+          score: 100, // Trust the database ranking
         });
-        if (!error && data) results = data;
       }
     }
+  } catch (err) {
+    console.error("Supabase search failed:", err);
+  }
 
-    const finalResults: SearchResult[] = [];
+  // 2. If the database didn't find enough, or if it's a very short query (like a single character for 飞花令),
+  // fallback to the ultra-fast local JSON map in Javascript (searches 314k poems in < 150ms).
+  if (finalResults.length < maxResults) {
+    const { loadAllPoemsLookup } = await import("../data/allPoemsLookup");
+    const map = await loadAllPoemsLookup();
+    
+    // We only need one token for local substring matching
+    const token = tokens[0];
+    let added = 0;
 
-    for (const r of results) {
-      let matchesAll = true;
-      let totalScore = 0;
-      const lines = r.lines || [];
-      let matchedLine = lines[0] || "";
+    for (const [key, p] of map.entries()) {
+      if (finalResults.some(res => res.poem._id === key)) continue; // skip duplicates
+
+      let tokenMatched = false;
+      let matchedLine = p.content?.[0] || "";
       let matchedLineIndex = 0;
 
-      const normTitle = r.title ? stripPunct(r.title) : "";
-      const normAuthor = r.author ? stripPunct(r.author) : "";
-      const normDynasty = r.dynasty ? stripPunct(r.dynasty) : "";
-      const joinedLines = lines.map((line: string) => stripPunct(line)).join("");
-
-      for (const token of tokens) {
-        let tokenMatched = false;
-        let tokenScore = 0;
-
-        if (normTitle === token) { tokenScore += 150; tokenMatched = true; }
-        else if (normTitle.includes(token)) { tokenScore += 80; tokenMatched = true; }
-        else if (levenshtein(normTitle, token) <= 1 && token.length > 2) { tokenScore += 50; tokenMatched = true; }
-
-        if (normAuthor === token) { tokenScore += 100; tokenMatched = true; }
-        else if (normAuthor.includes(token)) { tokenScore += 50; tokenMatched = true; }
-        else if (levenshtein(normAuthor, token) <= 1 && token.length > 1) { tokenScore += 30; tokenMatched = true; }
-
-        if (normDynasty === token) { tokenScore += 30; tokenMatched = true; }
-
-        if (!tokenMatched) {
-          if (joinedLines.includes(token)) {
-            tokenScore += 40;
+      // Check title/author first (in case DB failed)
+      if (p.t.includes(token) || p.a.includes(token)) {
+        tokenMatched = true;
+      } else if (p.content) {
+        // Scan the lines for the character/phrase
+        for (let i = 0; i < p.content.length; i++) {
+          if (p.content[i].includes(token)) {
             tokenMatched = true;
-            for (let i = 0; i < lines.length; i++) {
-              if (stripPunct(lines[i]).includes(token)) {
-                matchedLine = lines[i];
-                matchedLineIndex = i;
-                break;
-              }
-            }
-          } else {
-            // Fuzzy line match fallback
-            for (let i = 0; i < lines.length; i++) {
-              const normLine = stripPunct(lines[i]);
-              const dist = levenshtein(normLine, token);
-              // Allow 1 typo per 4 chars roughly
-              const allowedTypos = Math.max(1, Math.floor(token.length / 4));
-              
-              if (dist <= allowedTypos) {
-                tokenScore += Math.max(10, 40 - (dist * 10));
-                tokenMatched = true;
-                matchedLine = lines[i];
-                matchedLineIndex = i;
-                break;
-              }
-            }
+            matchedLine = p.content[i];
+            matchedLineIndex = i;
+            break;
           }
         }
-
-        // If we used fuzzy DB search, we are more lenient and don't strictly require matchesAll
-        // as the DB already deemed it similar. But we still prefer matches.
-        if (!tokenMatched && !usedFuzzy) {
-          matchesAll = false;
-          break;
-        } else if (!tokenMatched && usedFuzzy) {
-          // It's technically okay because the DB found it fuzzy similar, but give it 0 score for this token.
-        }
-        
-        totalScore += tokenScore;
       }
 
-      if (matchesAll || usedFuzzy) {
-        // Boost score slightly if it was returned by fuzzy DB search
-        if (usedFuzzy && totalScore === 0) {
-          totalScore = 5; // minimal score for db match
-        }
-        
-        if (totalScore > 0) {
-          finalResults.push({
-            poem: {
-              _id: r.id,
-              name: r.title,
-              author: r.author,
-              dynasty: r.dynasty || "",
-              content: lines,
-              note: "",
-              matchedLine,
-              matchedLineIndex,
-            },
-            score: totalScore,
-          });
-        }
+      if (tokenMatched) {
+        finalResults.push({
+          poem: {
+            _id: key, // Use key as ID
+            name: p.t,
+            author: p.a,
+            dynasty: p.d || "",
+            content: p.content || [],
+            note: "",
+            matchedLine,
+            matchedLineIndex,
+          },
+          score: 50, // Local fallback score
+        });
+        added++;
+        if (finalResults.length >= maxResults) break;
       }
     }
-
-    return finalResults.sort((a, b) => b.score - a.score).slice(0, maxResults);
-  } catch (err) {
-    console.error("Supabase search failed, returning empty:", err);
-    return [];
   }
+
+  return finalResults.sort((a, b) => b.score - a.score).slice(0, maxResults);
 }
 
 export async function generalSearch(query: string, maxResults = 2000): Promise<SearchResult[]> {
