@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { exportProgress, importProgress } from "@/lib/user";
+import { supabase } from "@/lib/supabaseClient";
 import { FamiliarityChart } from "@/components/ui/FamiliarityChart";
 import { useLogin } from "@/lib/login";
 import { useUser } from "@/lib/userContext";
@@ -220,9 +221,16 @@ export default function HomePage() {
                   const file = input.files?.[0];
                   if (!file) return;
                   const reader = new FileReader();
-                  reader.onload = () => {
+                  reader.onload = async () => {
                     const ok = importProgress(reader.result as string);
                     if (ok) {
+                      // Nuke the cloud database so it doesn't re-download the ghost records
+                      if (user) {
+                        await supabase
+                          .from("user_progress")
+                          .delete()
+                          .eq("user_id", user.id);
+                      }
                       window.location.reload();
                     } else {
                       alert("导入失败，文件格式错误");
