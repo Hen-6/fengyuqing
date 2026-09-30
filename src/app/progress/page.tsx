@@ -26,7 +26,7 @@ export default function ProgressPage() {
   }, []);
 
   useEffect(() => {
-    loadAllPoemsLookup().then(() => setAllLoaded(true));
+    setAllLoaded(false);
   }, []);
 
   if (!loaded) return null;

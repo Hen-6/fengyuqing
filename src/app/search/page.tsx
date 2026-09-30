@@ -19,7 +19,7 @@ export default function SearchPage() {
   const [visibleCount, setVisibleCount] = useState(40);
 
   useEffect(() => {
-    loadAllPoemsLookup().then(() => setAllLoaded(true));
+    setAllLoaded(false);
   }, []);
 
   // Read initial query from URL search params

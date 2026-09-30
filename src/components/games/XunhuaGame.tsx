@@ -329,10 +329,7 @@ export function XunhuaGame() {
     }
   }, [store.poems, prefetchedNext, fetchNextCoupletAndGrid, triggerPrefetch]);
 
-  // Pre-load allPoemsLookup cache asynchronously on mount
-  useEffect(() => {
-    import("@/data/allPoemsLookup").then((m) => m.loadAllPoemsLookup());
-  }, []);
+  // Removed 85MB JSON pre-load for performance
 
   // First round auto start
   useEffect(() => {
