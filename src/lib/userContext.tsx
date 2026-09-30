@@ -123,18 +123,18 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 2. Fetch DB changes that aren't local (DISABLED to prevent ghost records from coming back)
-      // dbRecords?.forEach((r) => {
-      //   if (!localPoems[r.poem_id]) {
-      //     const base = createInitialProgress(r.poem_id);
-      //     localPoems[r.poem_id] = {
-      //       ...base,
-      //       level: r.level,
-      //       nextReview: r.next_review,
-      //     };
-      //     modified = true;
-      //   }
-      // });
+      // 2. Fetch DB changes that aren't local
+      dbRecords?.forEach((r) => {
+        if (!localPoems[r.poem_id]) {
+          const base = createInitialProgress(r.poem_id);
+          localPoems[r.poem_id] = {
+            ...base,
+            level: r.level,
+            nextReview: r.next_review,
+          };
+          modified = true;
+        }
+      });
 
       // Upload chunks
       if (toUpload.length > 0) {
