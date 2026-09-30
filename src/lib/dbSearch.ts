@@ -49,7 +49,7 @@ export async function searchOnline(
   let finalResults: SearchResult[] = [];
 
   try {
-    // 1. Try fuzzy search RPC for Title/Author (Instant via pg_trgm indices)
+    // 1. Ultra-fast index search on Title/Author
     const { data: fuzzyData, error: fuzzyError } = await supabase.rpc("search_poems_fuzzy", {
       query_text: stripPunct(cleanQuery),
       max_results: maxResults,
@@ -70,6 +70,44 @@ export async function searchOnline(
           },
           score: 100, // Trust the database ranking
         });
+      }
+    }
+    
+    // 2. If we need more (like for 飞花令), search the bodies using a streaming sequential scan
+    if (finalResults.length < maxResults) {
+      const { data: bodyData, error: bodyError } = await supabase.rpc("search_poems_body", {
+        query_text: stripPunct(cleanQuery),
+        max_results: maxResults - finalResults.length,
+      });
+
+      if (!bodyError && bodyData && bodyData.length > 0) {
+        for (const r of bodyData) {
+          if (finalResults.some(res => res.poem._id === r.id)) continue;
+          
+          let matchedLine = r.lines?.[0] || "";
+          let matchedLineIndex = 0;
+          for (let i = 0; i < (r.lines || []).length; i++) {
+            if (r.lines[i].includes(stripPunct(cleanQuery))) {
+              matchedLine = r.lines[i];
+              matchedLineIndex = i;
+              break;
+            }
+          }
+          
+          finalResults.push({
+            poem: {
+              _id: r.id,
+              name: r.title,
+              author: r.author,
+              dynasty: r.dynasty || "",
+              content: r.lines || [],
+              note: "",
+              matchedLine,
+              matchedLineIndex,
+            },
+            score: 50,
+          });
+        }
       }
     }
   } catch (err) {
