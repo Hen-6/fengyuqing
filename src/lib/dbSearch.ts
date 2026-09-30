@@ -76,58 +76,6 @@ export async function searchOnline(
     console.error("Supabase search failed:", err);
   }
 
-  // 2. If the database didn't find enough, or if it's a very short query (like a single character for 飞花令),
-  // fallback to the ultra-fast local JSON map in Javascript (searches 314k poems in < 150ms).
-  if (finalResults.length < maxResults) {
-    const { loadAllPoemsLookup } = await import("../data/allPoemsLookup");
-    const map = await loadAllPoemsLookup();
-    
-    // We only need one token for local substring matching
-    const token = tokens[0];
-    let added = 0;
-
-    for (const [key, p] of map.entries()) {
-      if (finalResults.some(res => res.poem._id === key)) continue; // skip duplicates
-
-      let tokenMatched = false;
-      let matchedLine = p.content?.[0] || "";
-      let matchedLineIndex = 0;
-
-      // Check title/author first (in case DB failed)
-      if (p.t.includes(token) || p.a.includes(token)) {
-        tokenMatched = true;
-      } else if (p.content) {
-        // Scan the lines for the character/phrase
-        for (let i = 0; i < p.content.length; i++) {
-          if (p.content[i].includes(token)) {
-            tokenMatched = true;
-            matchedLine = p.content[i];
-            matchedLineIndex = i;
-            break;
-          }
-        }
-      }
-
-      if (tokenMatched) {
-        finalResults.push({
-          poem: {
-            _id: key, // Use key as ID
-            name: p.t,
-            author: p.a,
-            dynasty: p.d || "",
-            content: p.content || [],
-            note: "",
-            matchedLine,
-            matchedLineIndex,
-          },
-          score: 50, // Local fallback score
-        });
-        added++;
-        if (finalResults.length >= maxResults) break;
-      }
-    }
-  }
-
   return finalResults.sort((a, b) => b.score - a.score).slice(0, maxResults);
 }
 
