@@ -253,5 +253,5 @@ export function getOverview(store: UserStore): {
     if (prog.nextReview <= today) dueToday++;
   }
 
-  return { total: 72995, level3plus, level5, dueToday };
+  return { total: 314547, level3plus, level5, dueToday };
 }
