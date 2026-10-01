@@ -13,13 +13,7 @@ function normalizeTitle(title: string): string {
 
 async function _load(): Promise<Map<string, PoemData>> {
   if (_cache) return _cache;
-  const res = await fetch('/data/all_poems_lookup.json');
-  const data: { poems: PoemData[] } = await res.json();
   _cache = new Map();
-  for (const p of data.poems) {
-    const canonical = `${normalizeTitle(p.t)}:${p.a}`
-    _cache.set(canonical, p)
-  }
   return _cache;
 }
 

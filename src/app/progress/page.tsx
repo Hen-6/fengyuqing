@@ -23,8 +23,7 @@ export default function ProgressPage() {
       map.set(`${p.t}:${p.a}`, { t: p.t, a: p.a, d: p.d });
     }
     setRankMap(map);
-
-    loadAllPoemsLookup().then(() => setAllLoaded(true));
+    setAllLoaded(true);
   }, []);
 
   if (!loaded) return null;
