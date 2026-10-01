@@ -1,4 +1,4 @@
-import pako from 'pako';
+import * as pako from 'pako';
 
 let globalPoemsCache: any[] | null = null;
 let isLoading = false;
@@ -54,7 +54,7 @@ async function loadDataset() {
             const arrayBuffer = await res.arrayBuffer();
             
             console.log(`[Worker] Fetched ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB. Decompressing...`);
-            const decompressed = pako.inflate(new Uint8Array(arrayBuffer), { to: 'string' });
+            const decompressed = pako.inflate(new Uint8Array(arrayBuffer), { to: 'string' } as any) as string;
             
             console.log("[Worker] Parsing JSON...");
             globalPoemsCache = JSON.parse(decompressed).poems;
