@@ -1,4 +1,4 @@
-import { inflate } from 'pako';
+import pako from 'pako';
 
 let globalPoemsCache: any[] | null = null;
 let isLoading = false;
@@ -54,7 +54,7 @@ async function loadDataset() {
             const arrayBuffer = await res.arrayBuffer();
             
             console.log(`[Worker] Fetched ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB. Decompressing...`);
-            const decompressed = inflate(new Uint8Array(arrayBuffer), { to: 'string' });
+            const decompressed = pako.inflate(new Uint8Array(arrayBuffer), { to: 'string' });
             
             console.log("[Worker] Parsing JSON...");
             globalPoemsCache = JSON.parse(decompressed).poems;
@@ -90,7 +90,17 @@ self.addEventListener('message', async (e) => {
         if (type === 'GET_POEM') {
             const title = key.split(':')[0];
             const author = key.split(':')[1];
-            const p = poems.find((x: any) => x.t === title && x.a === author);
+            let p = poems.find((x: any) => x.t === title && x.a === author);
+            
+            // Fallback for old dataset keys (e.g. '赠别·其一' vs '赠别二首 一')
+            if (!p) {
+                const cleanTitle = title.replace(/[·\s]/g, '');
+                p = poems.find((x: any) => 
+                    x.a === author && 
+                    (x.t.replace(/[·\s]/g, '').includes(cleanTitle) || cleanTitle.includes(x.t.replace(/[·\s]/g, '')))
+                );
+            }
+
             self.postMessage({ id, results: p ? { poem: { ...p, id: generatePseudoId(p.t, p.a) } } : { poem: null } });
             return;
         }

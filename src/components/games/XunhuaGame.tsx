@@ -243,9 +243,6 @@ export function XunhuaGame() {
     }
 
     if (!pick) {
-      // If we failed to find any valid couplets from the user's known keys
-      // (e.g., they only learned poems with old deprecated keys that no longer exist),
-      // we must fallback to the demo keys to prevent the game from crashing.
       const fallbackKeys = [
         "静夜思:李白",
         "登鹳雀楼:王之涣",
@@ -296,7 +293,7 @@ export function XunhuaGame() {
   // Start a round
   const startRound = useCallback(async () => {
     let knownKeys = Object.entries(store.poems)
-      .filter(([_, prog]) => prog.level >= 1)
+      .filter(([_, prog]) => prog.level >= 3)
       .map(([k]) => k);
 
     if (knownKeys.length === 0) {
