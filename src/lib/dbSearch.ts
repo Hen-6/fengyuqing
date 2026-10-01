@@ -1,66 +1,93 @@
 import { supabase } from "./supabaseClient";
+import { getPoemByKeyFast } from "../data/allPoemsLookup";
 
-export interface SearchResult {
-  id: string;
-  key?: string;
-  title: string;
+export interface PoemResult {
+  _id: string;
+  name: string;
   author: string;
   dynasty: string;
-  lines: string[];
-  matchedLine?: string;
+  content: string[];
+  note: string;
+  matchedLine: string;
+  matchedLineIndex: number;
 }
 
-function stripPunct(str: string): string {
-  return str.replace(/[.,?!;:()'"\[\]{}<>《》【】“”‘’、，。？！；：]/g, "");
+export type OnlinePoemResult = PoemResult;
+
+export interface SearchResult {
+  poem: PoemResult;
+  score: number;
 }
 
-// 1. Unified search function (Uses local Vercel API for fuzzy search, then resolves DB IDs)
-export async function searchOnline(query: string, maxResults = 5): Promise<SearchResult[]> {
+function stripPunct(s: string): string {
+  return s.replace(/[，。！？、；：""''（）【】《》〈〉〔〕—…·.!?,\s]/g, "");
+}
+
+export async function searchOnline(
+  query: string,
+  maxResults = 20
+): Promise<SearchResult[]> {
   const q = query.trim();
   if (!q) return [];
-  
+
   try {
     const res = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: q })
     });
+    
+    // Fallback gracefully if API is down
+    if (!res.ok) return [];
+    
     const { results } = await res.json();
     
     if (!results || results.length === 0) return [];
 
+    // Map titles to DB IDs efficiently using OR
     const orQuery = results.map((r: any) => `and(title.eq."${r.title}",author.eq."${r.author}")`).join(',');
     
-    const { data: dbPoems, error } = await supabase
+    const { data: dbPoems } = await supabase
       .from('poems')
       .select('id, title, author, dynasty, lines')
       .or(orQuery);
 
-    if (error || !dbPoems) {
-       console.error("Failed to resolve DB IDs", error);
-       return results.map((r: any) => ({ ...r, id: `fallback-${r.title}` }));
-    }
+    const dbPoemsArray = dbPoems || [];
 
-    const finalResults = results.map((r: any) => {
-       const dbMatch = dbPoems.find(dbp => dbp.title === r.title && dbp.author === r.author);
+    return results.map((r: any, idx: number) => {
+       const dbMatch = dbPoemsArray.find(dbp => dbp.title === r.title && dbp.author === r.author);
+       const lines = dbMatch ? dbMatch.lines : r.lines;
+       let matchedLineIndex = 0;
+       
+       if (r.matchedLine) {
+           matchedLineIndex = lines.findIndex((l: string) => l === r.matchedLine) || 0;
+           if (matchedLineIndex === -1) matchedLineIndex = 0;
+       }
+
        return {
-           id: dbMatch ? dbMatch.id : `fallback-${r.title}`,
-           title: r.title,
-           author: r.author,
-           dynasty: r.dynasty || r.d,
-           lines: dbMatch ? dbMatch.lines : r.lines,
-           matchedLine: r.matchedLine
+           poem: {
+               _id: dbMatch ? dbMatch.id : `fallback-${r.title}`,
+               name: r.title,
+               author: r.author,
+               dynasty: r.dynasty || r.d,
+               content: lines,
+               note: "",
+               matchedLine: r.matchedLine || lines[0] || "",
+               matchedLineIndex
+           },
+           score: 100 - idx // Keep sort order
        };
     }).slice(0, maxResults);
-
-    return finalResults;
   } catch (error) {
-    console.error("Search error:", error);
+    console.error("Search API error:", error);
     return [];
   }
 }
 
-// 2. Xunhualing character search
+export async function generalSearch(query: string, maxResults = 2000): Promise<SearchResult[]> {
+  return searchOnline(query, maxResults);
+}
+
 export async function searchByChar(char: string, maxResults = 20): Promise<SearchResult[]> {
   const cleanQuery = stripPunct(char.trim());
   if (!cleanQuery) return [];
@@ -83,15 +110,28 @@ export async function searchByChar(char: string, maxResults = 20): Promise<Searc
 
     const dbPoemsArray = dbPoems || [];
 
-    return results.map((r: any) => {
+    return results.map((r: any, idx: number) => {
        const dbMatch = dbPoemsArray.find(dbp => dbp.title === r.title && dbp.author === r.author);
+       const lines = dbMatch ? dbMatch.lines : r.lines;
+       let matchedLineIndex = 0;
+       
+       if (r.matchedLine) {
+           matchedLineIndex = lines.findIndex((l: string) => l === r.matchedLine) || 0;
+           if (matchedLineIndex === -1) matchedLineIndex = 0;
+       }
+
        return {
-           id: dbMatch ? dbMatch.id : `fallback-${r.title}`,
-           title: r.title,
-           author: r.author,
-           dynasty: r.dynasty || r.d,
-           lines: dbMatch ? dbMatch.lines : r.lines,
-           matchedLine: r.matchedLine
+           poem: {
+               _id: dbMatch ? dbMatch.id : `fallback-${r.title}`,
+               name: r.title,
+               author: r.author,
+               dynasty: r.dynasty || r.d,
+               content: lines,
+               note: "",
+               matchedLine: r.matchedLine || lines[0] || "",
+               matchedLineIndex
+           },
+           score: 100
        };
     }).slice(0, maxResults);
   } catch (e) {
@@ -99,28 +139,35 @@ export async function searchByChar(char: string, maxResults = 20): Promise<Searc
   }
 }
 
-// 3. Export specific poem
-export async function getPoemByKeyExport(key: string): Promise<SearchResult | undefined> {
-  try {
-    const parts = key.split("-");
-    const [title, author] = parts.length >= 2 ? [parts[0], parts[1]] : [key, ""];
-    
-    let query = supabase.from("poems").select("*").eq("title", title);
-    if (author) query = query.eq("author", author);
-    
-    const { data, error } = await query.limit(1).single();
-    if (error || !data) return undefined;
-
+export async function getPoemByKeyExport(key: string): Promise<SearchResult | null> {
+  const cached = getPoemByKeyFast(key);
+  if (cached) {
     return {
-      id: data.id,
-      key: data.key,
-      title: data.title,
-      author: data.author,
-      dynasty: data.dynasty,
-      lines: data.lines,
+      poem: { _id: key, name: cached.t, author: cached.a, dynasty: cached.d || "", content: cached.content || [], note: "", matchedLine: cached.content?.[0] || "", matchedLineIndex: 0 },
+      score: 100,
     };
-  } catch (e) {
-    console.error("Error fetching poem by key:", e);
-    return undefined;
+  }
+  try {
+    const title = key.split(':')[0];
+    const author = key.split(':')[1];
+    
+    const { data, error } = await supabase.from("poems").select("*")
+      .eq("title", title)
+      .eq("author", author)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return {
+      poem: { _id: data.id, name: data.title, author: data.author, dynasty: data.dynasty || "", content: data.lines || [], note: "", matchedLine: data.lines?.[0] || "", matchedLineIndex: 0 },
+      score: 100,
+    };
+  } catch {
+    return null;
   }
 }
+
+export function isLoaded(): boolean { return true; }
+export async function ensureLoaded(): Promise<void> { return Promise.resolve(); }
+export async function getAllPoems(): Promise<any[]> { return Promise.resolve([]); }
+export const localSearch = searchOnline;
