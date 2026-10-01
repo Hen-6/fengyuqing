@@ -1,4 +1,3 @@
-import { supabase } from "./supabaseClient";
 import { getPoemByKeyFast } from "../data/allPoemsLookup";
 
 export interface PoemResult {
@@ -23,6 +22,33 @@ function stripPunct(s: string): string {
   return s.replace(/[，。！？、；：""''（）【】《》〈〉〔〕—…·.!?,\s]/g, "");
 }
 
+// Instantiate Web Worker for frontend search
+let worker: Worker | null = null;
+let msgIdCounter = 0;
+const resolvers = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+
+if (typeof window !== "undefined") {
+    worker = new Worker(new URL('../workers/searchWorker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (e) => {
+        const { id, error, results } = e.data;
+        const p = resolvers.get(id);
+        if (p) {
+            resolvers.delete(id);
+            if (error) p.reject(new Error(error));
+            else p.resolve(results);
+        }
+    };
+}
+
+async function runWorker(type: string, payload: any): Promise<any> {
+    if (!worker) throw new Error("Worker not initialized (SSR)");
+    const id = ++msgIdCounter;
+    return new Promise((resolve, reject) => {
+        resolvers.set(id, { resolve, reject });
+        worker!.postMessage({ id, type, ...payload });
+    });
+}
+
 export async function searchOnline(
   query: string,
   maxResults = 20,
@@ -32,15 +58,7 @@ export async function searchOnline(
   if (!q) return [];
 
   try {
-    const res = await fetch('/api/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q, mode, limit: maxResults })
-    });
-    
-    if (!res.ok) return [];
-    
-    const { results } = await res.json();
+    const results = await runWorker('SEARCH', { query: q, mode, limit: maxResults });
     if (!results || results.length === 0) return [];
 
     return results.map((r: any, idx: number) => {
@@ -90,10 +108,8 @@ export async function getPoemByKeyExport(key: string): Promise<SearchResult | nu
     };
   }
   try {
-    const res = await fetch(`/api/poem?key=${encodeURIComponent(key)}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.poem) return null;
+    const data = await runWorker('GET_POEM', { key });
+    if (!data || !data.poem) return null;
 
     const p = data.poem;
     return {
