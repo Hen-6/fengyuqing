@@ -242,7 +242,37 @@ export function XunhuaGame() {
       }
     }
 
-    if (!pick) return null;
+    if (!pick) {
+      // If we failed to find any valid couplets from the user's known keys
+      // (e.g., they only learned poems with old deprecated keys that no longer exist),
+      // we must fallback to the demo keys to prevent the game from crashing.
+      const fallbackKeys = [
+        "静夜思:李白",
+        "登鹳雀楼:王之涣",
+        "春晓:孟浩然",
+        "江雪:柳宗元",
+        "鹿柴:王维",
+        "相思:王维",
+        "悯农:李绅",
+        "寻隐者不遇:贾岛"
+      ].filter(k => !keys.includes(k)); // prevent infinite loop if keys ALREADY were demo keys
+
+      if (fallbackKeys.length > 0) {
+        // inline the fallback batch fetching
+        for (const k of fallbackKeys) {
+            const res = await getPoemByKeyExport(k);
+            if (!res || !res.poem) continue;
+            const couplets = extractCouplets(res.poem);
+            if (couplets.length > 0) {
+                pick = couplets[Math.floor(Math.random() * couplets.length)];
+                break;
+            }
+        }
+      }
+      
+      if (!pick) return null;
+    }
+    
     const grid = await buildHintGridAsync(pick, keys);
     return { target: pick, hintGrid: grid };
   }, []);
