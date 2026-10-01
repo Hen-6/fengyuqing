@@ -296,7 +296,7 @@ export function XunhuaGame() {
   // Start a round
   const startRound = useCallback(async () => {
     let knownKeys = Object.entries(store.poems)
-      .filter(([_, prog]) => prog.level >= 3)
+      .filter(([_, prog]) => prog.level >= 1)
       .map(([k]) => k);
 
     if (knownKeys.length === 0) {
