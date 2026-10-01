@@ -121,9 +121,24 @@ function PoemEntryRow({
   // 同步外部变化
   useEffect(() => { setLocalLevel(p.level); }, [p.level]);
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (showCard) { setShowCard(false); return; }
-    const found = getPoemByKeyFast(item.key);
+    
+    // Check old dictionary just in case it was loaded, but prioritize API
+    let found = getPoemByKeyFast(item.key);
+    
+    if (!found) {
+      try {
+        const res = await fetch(`/api/poem?title=${encodeURIComponent(item.title)}&author=${encodeURIComponent(item.author)}`);
+        if (res.ok) {
+          const data = await res.json();
+          found = data.poem;
+        }
+      } catch (e) {
+        console.error("Failed to fetch poem details", e);
+      }
+    }
+    
     setPoemData(found ?? null);
     setShowCard(true);
   };

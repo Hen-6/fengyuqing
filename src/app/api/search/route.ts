@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+import zlib from 'zlib';
 
 let globalPoemsCache: any[] | null = null;
 
@@ -29,7 +32,6 @@ function sharesEnoughChars(line: string, query: string): boolean {
     return matchCount >= Math.floor(query.length / 2);
 }
 
-// Generate a pseudo-ID like the old system for compatibility
 function generatePseudoId(t: string, a: string) {
     let hash = 0;
     const str = t + ':' + a;
@@ -45,13 +47,11 @@ export async function POST(req: Request) {
         const { query, mode, limit } = await req.json();
         if (!query) return NextResponse.json({ results: [] });
         
-        // Load the massive 314k dataset dynamically on cold start!
         if (!globalPoemsCache) {
-            const url = new URL(req.url);
-            const dataUrl = `${url.protocol}//${url.host}/data/all_poems_lookup.json`;
-            const res = await fetch(dataUrl);
-            const data = await res.json();
-            globalPoemsCache = data.poems;
+            const p = path.join(process.cwd(), 'public', 'data', 'SUPER_DATASET_DEDUPED.json.gz');
+            const gz = fs.readFileSync(p);
+            const unzipped = zlib.gunzipSync(gz).toString('utf8');
+            globalPoemsCache = JSON.parse(unzipped).poems;
         }
         
         const poems = globalPoemsCache!;
@@ -61,7 +61,6 @@ export async function POST(req: Request) {
         let exactMatches = [];
         let roughMatches = [];
 
-        // MODE: CHAR (Extremely fast, body only, substring)
         if (mode === 'char') {
             for (const p of poems) {
                 for (const line of p.content) {
@@ -79,7 +78,6 @@ export async function POST(req: Request) {
             });
         }
         
-        // MODE: LINE (Sentence validation, body only)
         if (mode === 'line') {
             for (const p of poems) {
                 for (const line of p.content) {
@@ -129,7 +127,6 @@ export async function POST(req: Request) {
             });
         }
         
-        // MODE: GENERAL (Search Page)
         if (mode === 'general') {
             for (const p of poems) {
                 let matched = false;
