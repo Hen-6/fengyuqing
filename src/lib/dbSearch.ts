@@ -43,37 +43,26 @@ export async function searchOnline(
     const { results } = await res.json();
     if (!results || results.length === 0) return [];
 
-    const orQuery = results.map((r: any) => `id.like.${r.id}%`).join(',');
-    
-    const { data: dbPoems } = await supabase
-      .from('poems')
-      .select('id, title, author, dynasty, lines')
-      .or(orQuery);
-
-    const dbPoemsArray = dbPoems || [];
-
     return results.map((r: any, idx: number) => {
-       const dbMatch = dbPoemsArray.find(dbp => dbp.id.startsWith(r.id));
-       const lines = dbMatch ? dbMatch.lines : r.lines;
        let matchedLineIndex = 0;
        
        if (r.matchedLine) {
-           matchedLineIndex = lines.findIndex((l: string) => l === r.matchedLine) || 0;
+           matchedLineIndex = r.lines.findIndex((l: string) => l === r.matchedLine) || 0;
            if (matchedLineIndex === -1) matchedLineIndex = 0;
        }
 
        return {
            poem: {
-               _id: dbMatch ? dbMatch.id : `fallback-${r.title}`,
+               _id: r.id || `fallback-${r.title}`,
                name: r.title,
                author: r.author,
-               dynasty: r.dynasty || r.d,
-               content: lines,
+               dynasty: r.dynasty || r.d || "未知",
+               content: r.lines,
                note: "",
-               matchedLine: r.matchedLine || lines[0] || "",
+               matchedLine: r.matchedLine || r.lines[0] || "",
                matchedLineIndex
            },
-           score: 100 - idx
+           score: r.score || (100 - idx)
        };
     }).slice(0, maxResults);
   } catch (error) {
@@ -101,21 +90,18 @@ export async function getPoemByKeyExport(key: string): Promise<SearchResult | nu
     };
   }
   try {
-    const title = key.split(':')[0];
-    const author = key.split(':')[1];
-    
-    const { data, error } = await supabase.from("poems").select("*")
-      .eq("title", title)
-      .eq("author", author)
-      .limit(1)
-      .maybeSingle();
+    const res = await fetch(`/api/poem?key=${encodeURIComponent(key)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.poem) return null;
 
-    if (error || !data) return null;
+    const p = data.poem;
     return {
-      poem: { _id: data.id, name: data.title, author: data.author, dynasty: data.dynasty || "", content: data.lines || [], note: "", matchedLine: data.lines?.[0] || "", matchedLineIndex: 0 },
+      poem: { _id: p.id || key, name: p.t, author: p.a, dynasty: p.d || "", content: p.content || [], note: "", matchedLine: p.content?.[0] || "", matchedLineIndex: 0 },
       score: 100,
     };
-  } catch {
+  } catch (error) {
+    console.error("getPoemByKeyExport error:", error);
     return null;
   }
 }
