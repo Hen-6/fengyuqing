@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         if (!globalPoemsCache) {
             const p = path.join(process.cwd(), 'public', 'data', 'SUPER_DATASET_DEDUPED.json.gz');
             const gz = fs.readFileSync(p);
-            const unzipped = zlib.gunzipSync(gz).toString('utf8');
+            const unzipped = zlib.unzipSync(gz).toString('utf8');
             globalPoemsCache = JSON.parse(unzipped).poems;
         }
         
