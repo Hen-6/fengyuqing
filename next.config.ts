@@ -6,7 +6,7 @@ console.log("NEXT_PUBLIC_SUPABASE_ANON_KEY:", process.env.NEXT_PUBLIC_SUPABASE_A
 console.log("-------------------------------------");
 
 const nextConfig: NextConfig = {
-  output: "export",
+  
   trailingSlash: true,
   // basePath removed for local development
   images: {
