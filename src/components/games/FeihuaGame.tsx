@@ -859,9 +859,7 @@ export function FeihuaGame() {
                     >
                       <div className="text-sm text-ink leading-relaxed">
                         {(() => {
-                          const rawLines = userInput.split(/[\n\r]+|([。！？\.]+)/).filter(Boolean);
-                          const userLines = rawLines.map((l) => l.trim()).filter((l) => stripPunct(l).length >= 4);
-                          return userLines[0] ?? item.poem.matchedLine;
+                          return item.poem.matchedLine || item.poem.content[0] || "";
                         })()}
                       </div>
                       <div className="mt-1 text-xs text-text-muted">
