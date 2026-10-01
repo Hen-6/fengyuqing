@@ -355,7 +355,7 @@ export function XunhuaGame() {
 
     try {
       // 查询完整数据库，上限给多一点以容纳包含相同片段的诗词
-      const results = await searchOnline(clean, 20);
+      const results = await searchOnline(clean, 20, 'line');
 
       let matchedCouplet: Couplet | null = null;
       let nearbyCps: { cp: Couplet; diff: number }[] = [];

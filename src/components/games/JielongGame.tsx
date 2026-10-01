@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import { VoiceInput } from "@/components/ui/VoiceInput";
 import { LEVEL_LABELS } from "@/lib/srs";
-import { OnlinePoemResult, searchOnline } from "@/lib/localSearch";
+import { OnlinePoemResult, searchOnline, searchByChar } from "@/lib/localSearch";
 import { loadStore, markPoemAnswered, setLevel } from "@/lib/user";
 import { stripPunctuation } from "@/lib/poems";
 
@@ -50,7 +50,7 @@ export function JielongGame() {
     // 随机选一个常见起始字
     const starts = ["月", "春", "花", "风", "秋", "雨", "山", "水", "夜", "天"];
     const startChar = starts[Math.floor(Math.random() * starts.length)];
-    const hits = await searchOnline(startChar, 20);
+    const hits = await searchByChar(startChar, 20);
     setSearching(false);
 
     if (hits.length === 0) {
@@ -143,7 +143,7 @@ export function JielongGame() {
     } else {
       // 跨诗接龙：检查诗句是否在库中
       setSearching(true);
-      const hits = await searchOnline(trimmed, 5);
+      const hits = await searchOnline(trimmed, 5, 'line');
       setSearching(false);
 
       if (hits.length === 0) {
@@ -197,7 +197,7 @@ export function JielongGame() {
     } else {
       // 跨诗接龙：寻找以 userLastChar 开头的诗句作为系统句
       setSearching(true);
-      const hits = await searchOnline(userLastChar, 30);
+      const hits = await searchByChar(userLastChar, 30);
       setSearching(false);
 
       const candidates: { line: string; poem: OnlinePoemResult }[] = [];

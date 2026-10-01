@@ -25,7 +25,8 @@ function stripPunct(s: string): string {
 
 export async function searchOnline(
   query: string,
-  maxResults = 20
+  maxResults = 20,
+  mode: 'general' | 'line' | 'char' = 'general'
 ): Promise<SearchResult[]> {
   const q = query.trim();
   if (!q) return [];
@@ -34,7 +35,7 @@ export async function searchOnline(
     const res = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q })
+      body: JSON.stringify({ query: q, mode, limit: maxResults })
     });
     
     if (!res.ok) return [];
@@ -42,7 +43,6 @@ export async function searchOnline(
     const { results } = await res.json();
     if (!results || results.length === 0) return [];
 
-    // Use fast Primary Key prefix index
     const orQuery = results.map((r: any) => `id.like.${r.id}%`).join(',');
     
     const { data: dbPoems } = await supabase
@@ -83,58 +83,13 @@ export async function searchOnline(
 }
 
 export async function generalSearch(query: string, maxResults = 2000): Promise<SearchResult[]> {
-  return searchOnline(query, maxResults);
+  return searchOnline(query, maxResults, 'general');
 }
 
 export async function searchByChar(char: string, maxResults = 20): Promise<SearchResult[]> {
   const cleanQuery = stripPunct(char.trim());
   if (!cleanQuery) return [];
-
-  try {
-    const res = await fetch('/api/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: cleanQuery, mode: 'char' })
-    });
-    const { results } = await res.json();
-
-    if (!results || results.length === 0) return [];
-
-    const orQuery = results.map((r: any) => `id.like.${r.id}%`).join(',');
-    const { data: dbPoems } = await supabase
-      .from('poems')
-      .select('id, title, author, dynasty, lines')
-      .or(orQuery);
-
-    const dbPoemsArray = dbPoems || [];
-
-    return results.map((r: any, idx: number) => {
-       const dbMatch = dbPoemsArray.find(dbp => dbp.id.startsWith(r.id));
-       const lines = dbMatch ? dbMatch.lines : r.lines;
-       let matchedLineIndex = 0;
-       
-       if (r.matchedLine) {
-           matchedLineIndex = lines.findIndex((l: string) => l === r.matchedLine) || 0;
-           if (matchedLineIndex === -1) matchedLineIndex = 0;
-       }
-
-       return {
-           poem: {
-               _id: dbMatch ? dbMatch.id : `fallback-${r.title}`,
-               name: r.title,
-               author: r.author,
-               dynasty: r.dynasty || r.d,
-               content: lines,
-               note: "",
-               matchedLine: r.matchedLine || lines[0] || "",
-               matchedLineIndex
-           },
-           score: 100
-       };
-    }).slice(0, maxResults);
-  } catch (e) {
-    return [];
-  }
+  return searchOnline(cleanQuery, maxResults, 'char');
 }
 
 export async function getPoemByKeyExport(key: string): Promise<SearchResult | null> {
