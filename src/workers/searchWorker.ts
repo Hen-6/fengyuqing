@@ -49,7 +49,7 @@ async function loadDataset() {
     loadPromise = (async () => {
         try {
             console.log("[Worker] Fetching SUPER_DATASET_DEDUPED.json.gz...");
-            const res = await fetch('/data/SUPER_DATASET_DEDUPED.json.gz');
+            const res = await fetch('/data/SUPER_DATASET_DEDUPED.json.gz?v=3');
             if (!res.ok) throw new Error("Failed to fetch dataset");
             const arrayBuffer = await res.arrayBuffer();
             
