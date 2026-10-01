@@ -37,15 +37,13 @@ export async function searchOnline(
       body: JSON.stringify({ query: q })
     });
     
-    // Fallback gracefully if API is down
     if (!res.ok) return [];
     
     const { results } = await res.json();
-    
     if (!results || results.length === 0) return [];
 
-    // Map titles to DB IDs efficiently using OR
-    const orQuery = results.map((r: any) => `and(title.eq."${r.title}",author.eq."${r.author}")`).join(',');
+    // Use fast Primary Key prefix index
+    const orQuery = results.map((r: any) => `id.like.${r.id}%`).join(',');
     
     const { data: dbPoems } = await supabase
       .from('poems')
@@ -55,7 +53,7 @@ export async function searchOnline(
     const dbPoemsArray = dbPoems || [];
 
     return results.map((r: any, idx: number) => {
-       const dbMatch = dbPoemsArray.find(dbp => dbp.title === r.title && dbp.author === r.author);
+       const dbMatch = dbPoemsArray.find(dbp => dbp.id.startsWith(r.id));
        const lines = dbMatch ? dbMatch.lines : r.lines;
        let matchedLineIndex = 0;
        
@@ -75,7 +73,7 @@ export async function searchOnline(
                matchedLine: r.matchedLine || lines[0] || "",
                matchedLineIndex
            },
-           score: 100 - idx // Keep sort order
+           score: 100 - idx
        };
     }).slice(0, maxResults);
   } catch (error) {
@@ -102,7 +100,7 @@ export async function searchByChar(char: string, maxResults = 20): Promise<Searc
 
     if (!results || results.length === 0) return [];
 
-    const orQuery = results.map((r: any) => `and(title.eq."${r.title}",author.eq."${r.author}")`).join(',');
+    const orQuery = results.map((r: any) => `id.like.${r.id}%`).join(',');
     const { data: dbPoems } = await supabase
       .from('poems')
       .select('id, title, author, dynasty, lines')
@@ -111,7 +109,7 @@ export async function searchByChar(char: string, maxResults = 20): Promise<Searc
     const dbPoemsArray = dbPoems || [];
 
     return results.map((r: any, idx: number) => {
-       const dbMatch = dbPoemsArray.find(dbp => dbp.title === r.title && dbp.author === r.author);
+       const dbMatch = dbPoemsArray.find(dbp => dbp.id.startsWith(r.id));
        const lines = dbMatch ? dbMatch.lines : r.lines;
        let matchedLineIndex = 0;
        

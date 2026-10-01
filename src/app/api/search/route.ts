@@ -31,7 +31,7 @@ export async function POST(req: Request) {
                 for (const line of p.content) {
                     if (line.includes(query)) {
                         exactMatches.push({ ...p, score: 100, matchedLine: line });
-                        if (exactMatches.length >= 20) break;
+                        break;
                     }
                 }
                 if (exactMatches.length >= 20) break;
@@ -39,13 +39,11 @@ export async function POST(req: Request) {
         } else {
             for (const p of poems) {
                 let matched = false;
-                // 1. Exact Match Title/Author
                 if (p.t === query || p.a === query || p.t.includes(query) || p.a.includes(query)) {
                     exactMatches.push({ ...p, score: 100 });
                     continue;
                 }
 
-                // 2. Exact match in body
                 for (const line of p.content) {
                     if (line.includes(query)) {
                         exactMatches.push({ ...p, matchedLine: line, score: 90 });
@@ -55,8 +53,7 @@ export async function POST(req: Request) {
                 }
                 if (matched) continue;
 
-                // 3. Fuzzy match body
-                if (exactMatches.length < 10) {
+                if (exactMatches.length < 5) {
                     let bestDist = 999;
                     let bestLine = "";
                     for (const line of p.content) {
@@ -77,17 +74,19 @@ export async function POST(req: Request) {
                             }
                         }
                     }
-                    if (bestDist <= 1) { // Very strict fuzzy to avoid slow search and junk
+                    if (bestDist <= 1) { 
                         roughMatches.push({ ...p, matchedLine: bestLine, score: 50 - bestDist });
                     }
                 }
             }
         }
 
-        const combined = [...exactMatches, ...roughMatches]
-            .sort((a, b) => b.score - a.score)
-            .slice(0, mode === 'char' ? 20 : 10)
+        const finalExact = exactMatches.sort((a, b) => b.score - a.score).slice(0, mode === 'char' ? 20 : 5);
+        const finalRough = roughMatches.sort((a, b) => b.score - a.score).slice(0, 5);
+
+        const combined = [...finalExact, ...finalRough]
             .map(p => ({
+                id: p.id,
                 title: p.t,
                 author: p.a,
                 dynasty: p.d,
