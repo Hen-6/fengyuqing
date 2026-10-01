@@ -8,6 +8,7 @@ import { PoemProgress, setLevel } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
 import type { OnlinePoemResult } from "@/lib/localSearch";
+import { getPoemByKeyExport } from "@/lib/dbSearch";
 import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
@@ -123,18 +124,21 @@ function PoemEntryRow({
   const handleClick = async () => {
     if (showCard) { setShowCard(false); return; }
     
-    // Check old dictionary just in case it was loaded, but prioritize API
     let found = getPoemByKeyFast(item.key);
     
     if (!found) {
       try {
-        const res = await fetch(`/api/poem?title=${encodeURIComponent(item.title)}&author=${encodeURIComponent(item.author)}`);
-        if (res.ok) {
-          const data = await res.json();
-          found = data.poem;
+        const res = await getPoemByKeyExport(item.key);
+        if (res && res.poem) {
+          found = {
+            t: res.poem.name,
+            a: res.poem.author,
+            d: res.poem.dynasty,
+            content: res.poem.content
+          };
         }
       } catch (e) {
-        console.error("Failed to fetch poem details", e);
+        console.error("Failed to fetch poem details from worker", e);
       }
     }
     
