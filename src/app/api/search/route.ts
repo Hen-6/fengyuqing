@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import poemsData from '../../../../data/poems.json';
 
 function levenshtein(s: string, t: string) {
     if (!s.length) return t.length;
@@ -19,26 +18,12 @@ function levenshtein(s: string, t: string) {
     return arr[t.length][s.length];
 }
 
-let cachedPoems: any = null;
-
 export async function POST(req: Request) {
     try {
         const { query, mode, limit } = await req.json();
         if (!query) return NextResponse.json({ results: [] });
         
-        if (!cachedPoems) {
-            const filePath = path.join(process.cwd(), 'data', 'poems.json');
-            try {
-                const fileContent = fs.readFileSync(filePath, 'utf8');
-                cachedPoems = JSON.parse(fileContent);
-            } catch (fsErr) {
-                const publicPath = path.join(process.cwd(), 'public', 'data', 'poems.json');
-                const fileContent = fs.readFileSync(publicPath, 'utf8');
-                cachedPoems = JSON.parse(fileContent);
-            }
-        }
-
-        const poems = cachedPoems;
+        const poems = poemsData as any[];
         const maxResults = limit || (mode === 'char' ? 200 : 5);
         
         let exactMatches = [];
