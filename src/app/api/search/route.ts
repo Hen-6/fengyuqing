@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import poemsData from '../../../../data/poems.json';
+
+let globalPoemsCache: any[] | null = null;
 
 function levenshtein(s: string, t: string) {
     if (!s.length) return t.length;
@@ -18,7 +19,6 @@ function levenshtein(s: string, t: string) {
     return arr[t.length][s.length];
 }
 
-// Fast pre-check to avoid Levenshtein on completely unrelated strings
 function sharesEnoughChars(line: string, query: string): boolean {
     let matchCount = 0;
     for (let i = 0; i < query.length; i++) {
@@ -26,8 +26,18 @@ function sharesEnoughChars(line: string, query: string): boolean {
             matchCount++;
         }
     }
-    // Must share at least half the characters (rounded down)
     return matchCount >= Math.floor(query.length / 2);
+}
+
+// Generate a pseudo-ID like the old system for compatibility
+function generatePseudoId(t: string, a: string) {
+    let hash = 0;
+    const str = t + ':' + a;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash).toString(16).padStart(12, '0');
 }
 
 export async function POST(req: Request) {
@@ -35,9 +45,17 @@ export async function POST(req: Request) {
         const { query, mode, limit } = await req.json();
         if (!query) return NextResponse.json({ results: [] });
         
-        const poems = poemsData as any[];
+        // Load the massive 314k dataset dynamically on cold start!
+        if (!globalPoemsCache) {
+            const url = new URL(req.url);
+            const dataUrl = `${url.protocol}//${url.host}/data/all_poems_lookup.json`;
+            const res = await fetch(dataUrl);
+            const data = await res.json();
+            globalPoemsCache = data.poems;
+        }
+        
+        const poems = globalPoemsCache!;
         const exactLimit = limit || (mode === 'char' ? 200 : 5);
-        // User explicitly wants strictly 5 max for fuzzy search!
         const fuzzyLimit = 5; 
         
         let exactMatches = [];
@@ -48,7 +66,7 @@ export async function POST(req: Request) {
             for (const p of poems) {
                 for (const line of p.content) {
                     if (line.includes(query)) {
-                        exactMatches.push({ ...p, score: 100, matchedLine: line });
+                        exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), score: 100, matchedLine: line });
                         break;
                     }
                 }
@@ -63,11 +81,10 @@ export async function POST(req: Request) {
         
         // MODE: LINE (Sentence validation, body only)
         if (mode === 'line') {
-            // Pass 1: EXACT MATCH
             for (const p of poems) {
                 for (const line of p.content) {
                     if (line.includes(query)) {
-                        exactMatches.push({ ...p, matchedLine: line, score: 100 });
+                        exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line, score: 100 });
                         break;
                     }
                 }
@@ -82,12 +99,11 @@ export async function POST(req: Request) {
                 });
             }
 
-            // Pass 2: FUZZY MATCH (Only if no exact matches exist)
             for (const p of poems) {
                 let bestDist = 999;
                 let bestLine = "";
                 for (const line of p.content) {
-                    if (!sharesEnoughChars(line, query)) continue; // Fast skip
+                    if (!sharesEnoughChars(line, query)) continue;
                     
                     if (Math.abs(line.length - query.length) < 5) {
                         const dist = levenshtein(line, query);
@@ -101,7 +117,7 @@ export async function POST(req: Request) {
                     }
                 }
                 if (bestDist <= 2) { 
-                    roughMatches.push({ ...p, matchedLine: bestLine, score: 50 - bestDist });
+                    roughMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: bestLine, score: 50 - bestDist });
                 }
             }
             
@@ -115,18 +131,17 @@ export async function POST(req: Request) {
         
         // MODE: GENERAL (Search Page)
         if (mode === 'general') {
-            // Pass 1: EXACT MATCH (Title, Author, Body)
             for (const p of poems) {
                 let matched = false;
                 if (p.t === query || p.a === query || p.t.includes(query) || p.a.includes(query)) {
-                    exactMatches.push({ ...p, score: 100, matchedLine: p.content[0] });
+                    exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), score: 100, matchedLine: p.content[0] });
                     matched = true;
                 }
 
                 if (!matched) {
                     for (const line of p.content) {
                         if (line.includes(query)) {
-                            exactMatches.push({ ...p, matchedLine: line, score: 90 });
+                            exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line, score: 90 });
                             matched = true;
                             break;
                         }
@@ -143,12 +158,11 @@ export async function POST(req: Request) {
                 });
             }
 
-            // Pass 2: FUZZY MATCH
             for (const p of poems) {
                 let bestDist = 999;
                 let bestLine = "";
                 for (const line of p.content) {
-                    if (!sharesEnoughChars(line, query)) continue; // Fast skip
+                    if (!sharesEnoughChars(line, query)) continue;
                     
                     if (Math.abs(line.length - query.length) < 5) {
                         const dist = levenshtein(line, query);
@@ -162,7 +176,7 @@ export async function POST(req: Request) {
                     }
                 }
                 if (bestDist <= 2) { 
-                    roughMatches.push({ ...p, matchedLine: bestLine, score: 50 - bestDist });
+                    roughMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: bestLine, score: 50 - bestDist });
                 }
             }
             
