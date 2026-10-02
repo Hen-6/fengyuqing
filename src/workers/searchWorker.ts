@@ -115,9 +115,19 @@ self.addEventListener('message', async (e) => {
             let roughMatches: any[] = [];
 
             if (mode === 'char') {
+                const matchType = e.data.matchType || 'exact';
+                const chars = matchType === 'scattered' ? Array.from(query) : [];
+                
                 for (const p of poems) {
                     for (const line of p.content) {
-                        if (line.includes(query)) {
+                        let matched = false;
+                        if (matchType === 'scattered') {
+                            matched = chars.every(c => line.includes(c));
+                        } else {
+                            matched = line.includes(query);
+                        }
+
+                        if (matched) {
                             exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), score: 100, matchedLine: line });
                             break;
                         }

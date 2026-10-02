@@ -43,6 +43,7 @@ export function FeihuaGame() {
   const { loaded } = usePoems();
   const [selectedChar, setSelectedChar] = useState<string>("");
   const [customChar, setCustomChar] = useState("");
+  const [matchType, setMatchType] = useState<'exact' | 'scattered'>('exact');
   const [phase, setPhase] = useState<"pick" | "playing" | "summary">("pick");
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceSupported] = useState(isVoiceSupported);
@@ -76,8 +77,9 @@ export function FeihuaGame() {
   const [loadingSummary, setLoadingSummary] = useState(false);
 
   /** 选字后立即搜索 */
-  const selectChar = useCallback(async (char: string) => {
+  const selectChar = useCallback(async (char: string, mt: 'exact'|'scattered' = 'exact') => {
     setSelectedChar(char);
+    setMatchType(mt);
     setCustomChar("");
     setOnlineResult(null);
     setSimilarPoems([]);
@@ -92,7 +94,7 @@ export function FeihuaGame() {
     setUnusedMastered([]);
 
     // 扩大搜索范围到200首，增加电脑词汇量
-    const hits = await searchByChar(char, 200);
+    const hits = await searchByChar(char, 200, mt);
     if (hits.length === 0) {
       setFeedback({ ok: false, msg: `没有找到含「${char}」的诗句` });
       setPhase("pick");
@@ -108,8 +110,18 @@ export function FeihuaGame() {
 
       for (let i = 0; i < hit.poem.content.length; i++) {
         const raw = hit.poem.content[i];
-        if (stripPunct(raw).length >= 4 && stripPunct(raw).includes(char)) {
-          poolItems.push({ line: raw, poem: hit.poem });
+        const cleanLine = stripPunct(raw);
+        if (cleanLine.length >= 4) {
+          let matched = false;
+          if (mt === 'scattered') {
+            const chars = char.split('');
+            matched = chars.every(c => cleanLine.includes(c));
+          } else {
+            matched = cleanLine.includes(char);
+          }
+          if (matched) {
+            poolItems.push({ line: raw, poem: hit.poem });
+          }
         }
       }
     }
@@ -187,9 +199,17 @@ export function FeihuaGame() {
     }
 
     // 1. 检测是否含关键字
-    if (!stripPunct(input).includes(selectedChar)) {
-      setFeedback({ ok: false, msg: `诗句中必须包含关键字「${selectedChar}」` });
-      return;
+    if (matchType === 'exact') {
+      if (!stripPunct(input).includes(selectedChar)) {
+        setFeedback({ ok: false, msg: `诗句中必须包含关键字「${selectedChar}」` });
+        return;
+      }
+    } else {
+      const chars = selectedChar.split('');
+      if (!chars.every(c => stripPunct(input).includes(c))) {
+        setFeedback({ ok: false, msg: `诗句中必须包含关键字「${selectedChar}」中的所有字` });
+        return;
+      }
     }
 
     // 3. 将多行输入拆分成独立行
@@ -391,7 +411,7 @@ export function FeihuaGame() {
     setTimeout(() => {
       botTurn(newSeen);
     }, 1500);
-  }, [selectedChar, botPoem, markPoemAnswered, localSeenPoems, botTurn]);
+  }, [selectedChar, botPoem, markPoemAnswered, localSeenPoems, botTurn, matchType, linePool]);
 
   const submitTextVoiceMode = useCallback(async (text: string) => {
     const input = text.trim();
@@ -488,7 +508,7 @@ export function FeihuaGame() {
 
     setFeedback({ ok: false, msg: `未找到诗句“${input}”` });
     setTimeout(() => setFeedback(prev => prev?.msg.includes("未找到诗句") ? null : prev), 3000);
-  }, [selectedChar, botPoem, localSeenPoems, linePool, handleAcceptHitVoiceMode]);
+  }, [selectedChar, botPoem, localSeenPoems, linePool, handleAcceptHitVoiceMode, matchType]);
 
   const submitTextVoiceModeRef = useRef(submitTextVoiceMode);
   useEffect(() => {
@@ -657,39 +677,68 @@ export function FeihuaGame() {
             随机关键词开始
           </button>
 
-          <div className="text-center text-xs text-text-muted">— 或 手动输入单字 —</div>
+          <div className="text-center text-xs text-text-muted">— 或 手动输入关键词 —</div>
 
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={customChar}
-              onChange={(e) => setCustomChar(e.target.value)}
-              placeholder="请输入单个关键字（如：酒）"
-              className="input-chinese flex-[3] text-left px-4"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
-                  if (cleaned.length === 1) {
-                    selectChar(cleaned);
-                  } else {
-                    setFeedback({ ok: false, msg: "请输入单个汉字作为关键字" });
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customChar}
+                onChange={(e) => setCustomChar(e.target.value)}
+                placeholder="请输入字词（如：酒 或 少年）"
+                className="input-chinese flex-[3] text-left px-4"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
+                    if (cleaned.length >= 1) {
+                      selectChar(cleaned, cleaned.length > 1 ? matchType : 'exact');
+                    } else {
+                      setFeedback({ ok: false, msg: "请输入汉字作为关键字" });
+                    }
                   }
-                }
-              }}
-            />
-            <button
-              onClick={() => {
-                const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
-                if (cleaned.length === 1) {
-                  selectChar(cleaned);
-                } else {
-                  setFeedback({ ok: false, msg: "请输入单个汉字作为关键字" });
-                }
-              }}
-              className="btn-primary flex-1 px-4 text-center whitespace-nowrap"
-            >
-              开始
-            </button>
+                }}
+              />
+              <button
+                onClick={() => {
+                  const cleaned = customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "");
+                  if (cleaned.length >= 1) {
+                    selectChar(cleaned, cleaned.length > 1 ? matchType : 'exact');
+                  } else {
+                    setFeedback({ ok: false, msg: "请输入汉字作为关键字" });
+                  }
+                }}
+                className="btn-primary flex-1 px-4 text-center whitespace-nowrap"
+              >
+                开始
+              </button>
+            </div>
+            
+            {customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "").length > 1 && (
+              <div className="flex items-center justify-center gap-4 text-sm text-text-muted bg-surface p-2 rounded-lg border border-border">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="matchType"
+                    value="exact"
+                    checked={matchType === 'exact'}
+                    onChange={() => setMatchType('exact')}
+                    className="accent-accent"
+                  />
+                  连续 (如: {customChar.trim().replace(/[^\u4e00-\u9fa5]/g, "")})
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="matchType"
+                    value="scattered"
+                    checked={matchType === 'scattered'}
+                    onChange={() => setMatchType('scattered')}
+                    className="accent-accent"
+                  />
+                  分散 (只要包含即可)
+                </label>
+              </div>
+            )}
           </div>
 
           {feedback && !feedback.ok && (
@@ -917,7 +966,7 @@ export function FeihuaGame() {
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                      placeholder={`输入含「${selectedChar}」的诗句`}
+                      placeholder={`输入${selectedChar.length > 1 ? (matchType === 'exact' ? `连续含“${selectedChar}”` : `同时含“${selectedChar.split('').join('、')}”`) : `含「${selectedChar}」`}的诗句`}
                       className="input-chinese flex-1 text-center"
                       autoFocus
                     />

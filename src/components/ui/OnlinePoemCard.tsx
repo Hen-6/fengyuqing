@@ -78,7 +78,7 @@ export function OnlinePoemCard({ result, onClose, highlightMatch = true }: Props
       )}
 
       <p className="mt-2 text-center text-xs text-text-muted">
-        数据来源：yxcs/poems-db
+        数据来源：chinese-poetry 完整题库
       </p>
 
       {onClose && (

@@ -52,13 +52,14 @@ async function runWorker(type: string, payload: any): Promise<any> {
 export async function searchOnline(
   query: string,
   maxResults = 20,
-  mode: 'general' | 'line' | 'char' = 'general'
+  mode: 'general' | 'line' | 'char' = 'general',
+  matchType: 'exact' | 'scattered' = 'exact'
 ): Promise<SearchResult[]> {
   const q = query.trim();
   if (!q) return [];
 
   try {
-    const results = await runWorker('SEARCH', { query: q, mode, limit: maxResults });
+    const results = await runWorker('SEARCH', { query: q, mode, limit: maxResults, matchType });
     if (!results || results.length === 0) return [];
 
     return results.map((r: any, idx: number) => {
@@ -93,10 +94,10 @@ export async function generalSearch(query: string, maxResults = 2000): Promise<S
   return searchOnline(query, maxResults, 'general');
 }
 
-export async function searchByChar(char: string, maxResults = 20): Promise<SearchResult[]> {
+export async function searchByChar(char: string, maxResults = 20, matchType: 'exact' | 'scattered' = 'exact'): Promise<SearchResult[]> {
   const cleanQuery = stripPunct(char.trim());
   if (!cleanQuery) return [];
-  return searchOnline(cleanQuery, maxResults, 'char');
+  return searchOnline(cleanQuery, maxResults, 'char', matchType);
 }
 
 export async function getPoemByKeyExport(key: string): Promise<SearchResult | null> {
