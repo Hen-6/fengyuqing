@@ -189,6 +189,40 @@ export function FeihuaGame() {
     selectChar(char);
   }, [selectChar]);
 
+/** 用户在弹窗中选中一首诗 */
+  const handleAcceptHit = useCallback(async (poem: OnlinePoemResult, userLine: string) => {
+    const pid = `${poem.name.trim()}:${poem.author.trim()}`;
+    
+    // 最终防御性检查
+    if (localSeenPoems.has(pid)) {
+      setFeedback({ ok: false, msg: "本局已说过这首诗，换一首吧" });
+      return;
+    }
+
+    setSelectModal([]);
+    setMultiLineInput(null);
+    setSimilarPoems([]);
+    setOnlineResult(poem);
+    setFeedback({ ok: true, msg: "✓ 正确！" });
+    markPoemAnswered(pid);
+    setShowCard(true);
+
+    const entry: RoundEntry = {
+      char: selectedChar,
+      botPoem: botPoem!,
+      userPoem: poem,
+      userLine,
+      skipped: false,
+    };
+    
+    setHistory((prev) => [entry, ...prev]);
+    setCurrentEntry(entry);
+    
+    const newSeen = new Set([...localSeenPoems, pid]);
+    setSeenPoemIds(newSeen);
+    setLocalSeenPoems(newSeen);
+  }, [selectedChar, botPoem, markPoemAnswered, localSeenPoems]);
+
   /** 提交用户输入 */
   const submitText = useCallback(async (text: string) => {
     const input = text.trim();
@@ -250,6 +284,17 @@ export function FeihuaGame() {
       }
       // 多结果 → 用选择弹窗（同 selectModal 流程）
       if (filteredHits.length > 1) {
+        const mastered = filteredHits.filter(h => {
+          const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
+          return (store.poems[pid]?.level ?? 0) >= 2;
+        });
+
+        if (mastered.length === 1) {
+          // 只有一首熟练，静默自动选择
+          await handleAcceptHit(mastered[0].poem, matchedLines.length > 0 ? matchedLines[0].line : userLines[0]);
+          return;
+        }
+
         const items: SelectionItem[] = filteredHits.map((h) => ({
           poem: h.poem,
           reason: "exact" as const,
@@ -297,7 +342,20 @@ export function FeihuaGame() {
     }
 
     if (matchedLines.length === 1 && matchedLines[0].matches.length > 1) {
-      // 单行但多结果（同文不同诗）→ 弹窗选择
+      // 单行但多结果（同文不同诗）
+      // 首先检查是否有且仅有一个选项在已学诗词中且熟练度 >= 2
+      const masteredMatches = matchedLines[0].matches.filter(item => {
+        const pid = `${item.poem.name.trim()}:${item.poem.author.trim()}`;
+        return (store.poems[pid]?.level ?? 0) >= 2;
+      });
+
+      if (masteredMatches.length === 1) {
+        // 唯一高熟练度匹配，静默自动选择
+        await handleAcceptHit(masteredMatches[0].poem, masteredMatches[0].line);
+        return;
+      }
+
+      // 否则弹窗选择
       const items: SelectionItem[] = matchedLines[0].matches.map((item) => ({
         poem: item.poem,
         reason: "exact",
@@ -309,42 +367,9 @@ export function FeihuaGame() {
 
     // 多行 → 让用户选哪一行，以及该行对应哪首诗
     setMultiLineInput({ lines: userLines, options: matchedLines });
-  }, [selectedChar, botPoem, localSeenPoems, linePool]);
+  }, [selectedChar, botPoem, localSeenPoems, linePool, store.poems, handleAcceptHit]);
 
-  /** 用户在弹窗中选中一首诗 */
-  const handleAcceptHit = useCallback(async (poem: OnlinePoemResult, userLine: string) => {
-    const pid = `${poem.name.trim()}:${poem.author.trim()}`;
-    
-    // 最终防御性检查
-    if (localSeenPoems.has(pid)) {
-      setFeedback({ ok: false, msg: "本局已说过这首诗，换一首吧" });
-      return;
-    }
-
-    setSelectModal([]);
-    setMultiLineInput(null);
-    setSimilarPoems([]);
-    setOnlineResult(poem);
-    setFeedback({ ok: true, msg: "✓ 正确！" });
-    markPoemAnswered(pid);
-    setShowCard(true);
-
-    const entry: RoundEntry = {
-      char: selectedChar,
-      botPoem: botPoem!,
-      userPoem: poem,
-      userLine,
-      skipped: false,
-    };
-    
-    setHistory((prev) => [entry, ...prev]);
-    setCurrentEntry(entry);
-    
-    const newSeen = new Set([...localSeenPoems, pid]);
-    setSeenPoemIds(newSeen);
-    setLocalSeenPoems(newSeen);
-  }, [selectedChar, botPoem, markPoemAnswered, localSeenPoems]);
-
+  
   const handleSubmit = useCallback(() => submitText(userInput), [userInput, submitText]);
 
   const handleVoiceResult = useCallback((text: string) => {
@@ -478,7 +503,15 @@ export function FeihuaGame() {
     })).filter((r) => r.matches.length > 0);
 
     if (matchedLines.length > 0) {
-      const match = matchedLines[0].matches[0];
+      const matches = matchedLines[0].matches;
+      let match = matches[0];
+      if (matches.length > 1) {
+        const mastered = matches.filter(m => {
+          const pid = `${m.poem.name.trim()}:${m.poem.author.trim()}`;
+          return (store.poems[pid]?.level ?? 0) >= 2;
+        });
+        if (mastered.length === 1) match = mastered[0];
+      }
       await handleAcceptHitVoiceMode(match.poem, match.line);
       return;
     }
@@ -490,7 +523,14 @@ export function FeihuaGame() {
     });
 
     if (filteredHits.length > 0) {
-      const match = filteredHits[0].poem;
+      let match = filteredHits[0].poem;
+      if (filteredHits.length > 1) {
+        const mastered = filteredHits.filter(h => {
+          const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
+          return (store.poems[pid]?.level ?? 0) >= 2;
+        });
+        if (mastered.length === 1) match = mastered[0].poem;
+      }
       await handleAcceptHitVoiceMode(match, match.matchedLine || match.content[0]);
       return;
     }
@@ -508,7 +548,7 @@ export function FeihuaGame() {
 
     setFeedback({ ok: false, msg: `未找到诗句“${input}”` });
     setTimeout(() => setFeedback(prev => prev?.msg.includes("未找到诗句") ? null : prev), 3000);
-  }, [selectedChar, botPoem, localSeenPoems, linePool, handleAcceptHitVoiceMode, matchType]);
+  }, [selectedChar, botPoem, localSeenPoems, linePool, handleAcceptHitVoiceMode, matchType, store.poems]);
 
   const submitTextVoiceModeRef = useRef(submitTextVoiceMode);
   useEffect(() => {
