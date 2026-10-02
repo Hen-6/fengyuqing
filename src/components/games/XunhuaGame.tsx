@@ -250,7 +250,7 @@ export function XunhuaGame() {
         "江雪:柳宗元",
         "鹿柴:王维",
         "相思:王维",
-        "悯农:李绅",
+        "悯农（之二）:李绅",
         "寻隐者不遇:贾岛"
       ].filter(k => !keys.includes(k)); // prevent infinite loop if keys ALREADY were demo keys
 
@@ -304,7 +304,7 @@ export function XunhuaGame() {
         "江雪:柳宗元",
         "鹿柴:王维",
         "相思:王维",
-        "悯农:李绅",
+        "悯农（之二）:李绅",
         "寻隐者不遇:贾岛"
       ];
       setIsDemoMode(true);
@@ -382,7 +382,7 @@ export function XunhuaGame() {
 
     try {
       // 查询完整数据库，上限给多一点以容纳包含相同片段的诗词
-      const results = await searchOnline(clean, 20, 'line');
+      const results = await searchOnline(clean, 50, 'line');
 
       let matchedCouplet: Couplet | null = null;
       let nearbyCps: { cp: Couplet; diff: number }[] = [];
