@@ -270,7 +270,7 @@ export function FeihuaGame() {
 
     if (matchedLines.length === 0) {
       // 无行池精确匹配 → 直接在数据库中精确搜索用户输入（去掉标点符号）
-      const exactHits = await searchOnline(stripPunct(input), 100, 'line');
+      const exactHits = await searchOnline(stripPunct(input), 30, 'line');
       
       // 过滤掉当前局已经用过的诗
       const filteredHits = exactHits.filter(h => {
@@ -367,7 +367,7 @@ export function FeihuaGame() {
     }
 
     // 多行 → 让用户选哪一行，以及该行对应哪首诗
-    setMultiLineInput({ lines: userLines, options: matchedLines });
+    setMultiLineInput({ lines: userLines, options: matchedLines.map(ml => ({ ...ml, matches: ml.matches.slice(0, 5) })) });
   }, [selectedChar, botPoem, localSeenPoems, linePool, store.poems, handleAcceptHit]);
 
   
@@ -517,7 +517,7 @@ export function FeihuaGame() {
       return;
     }
 
-    const exactHits = await searchOnline(cleanInput, 100, 'line');
+    const exactHits = await searchOnline(cleanInput, 30, 'line');
     const filteredHits = exactHits.filter(h => {
       const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
       return !localSeenPoems.has(pid);
