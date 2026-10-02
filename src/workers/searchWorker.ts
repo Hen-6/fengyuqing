@@ -54,7 +54,8 @@ async function loadDataset() {
             const arrayBuffer = await res.arrayBuffer();
             
             console.log(`[Worker] Fetched ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB. Decompressing...`);
-            const decompressed = pako.inflate(new Uint8Array(arrayBuffer), { to: 'string' } as any) as string;
+            const decompressedArray = pako.inflate(new Uint8Array(arrayBuffer));
+            const decompressed = new TextDecoder().decode(decompressedArray);
             
             console.log("[Worker] Parsing JSON...");
             globalPoemsCache = JSON.parse(decompressed).poems;
