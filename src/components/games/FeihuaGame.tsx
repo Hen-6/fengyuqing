@@ -95,7 +95,7 @@ export function FeihuaGame() {
     setUnusedMastered([]);
 
     // 扩大搜索范围到200首，增加电脑词汇量
-    const hits = await searchByChar(char, 200, mt);
+    const hits = await searchByChar(char, 500, mt);
     if (hits.length === 0) {
       setFeedback({ ok: false, msg: `没有找到含「${char}」的诗句` });
       setPhase("pick");
@@ -517,7 +517,7 @@ export function FeihuaGame() {
       return;
     }
 
-    const exactHits = await searchOnline(cleanInput, 15, 'line');
+    const exactHits = await searchOnline(cleanInput, 50, 'line');
     const filteredHits = exactHits.filter(h => {
       const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
       return !localSeenPoems.has(pid);
