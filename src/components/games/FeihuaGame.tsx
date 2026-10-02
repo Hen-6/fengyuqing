@@ -299,7 +299,7 @@ export function FeihuaGame() {
         const items: SelectionItem[] = filteredHits.map((h) => ({
           poem: h.poem,
           reason: "exact" as const,
-        }));
+        })).slice(0, 5);
         setSelectModal(items);
         setFeedback(null);
         return;
@@ -359,8 +359,8 @@ export function FeihuaGame() {
       // 否则弹窗选择
       const items: SelectionItem[] = matchedLines[0].matches.map((item) => ({
         poem: item.poem,
-        reason: "exact",
-      }));
+        reason: "exact" as const,
+      })).slice(0, 5);
       setSelectModal(items);
       setFeedback(null);
       return;
