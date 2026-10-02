@@ -39,29 +39,6 @@ interface RoundEntry {
 }
 
 
-function getMasteredLevel(poem: OnlinePoemResult, storePoems: Record<string, {level: number}>): number {
-  const pid = `${poem.name.trim()}:${poem.author.trim()}`;
-  if (storePoems[pid]) return storePoems[pid].level;
-
-  const cleanTitle = poem.name.replace(/[·\s]/g, '');
-  const author = poem.author.trim();
-  
-  for (const storeKey of Object.keys(storePoems)) {
-    const parts = storeKey.split(':');
-    if (parts.length < 2) continue;
-    const sTitle = parts[0];
-    const sAuthor = parts[1];
-    if (sAuthor.trim() !== author) continue;
-    
-    const cleanStoreTitle = sTitle.replace(/[·\s]/g, '');
-    if (cleanTitle.includes(cleanStoreTitle) || cleanStoreTitle.includes(cleanTitle)) {
-      return storePoems[storeKey].level;
-    }
-  }
-  
-  return 0;
-}
-
 export function FeihuaGame() {
   const { store, markPoemAnswered, setLevel } = useUser();
   const { loaded } = usePoems();
@@ -309,7 +286,8 @@ export function FeihuaGame() {
       // 多结果 → 用选择弹窗（同 selectModal 流程）
       if (filteredHits.length > 1) {
         const mastered = filteredHits.filter(h => {
-          return getMasteredLevel(h.poem, store.poems) >= 2;
+          const pid = `${h.poem.name.trim()}:${h.poem.author.trim()}`;
+          return (store.poems[pid]?.level ?? 0) >= 2;
         });
 
         if (mastered.length === 1) {
@@ -368,7 +346,8 @@ export function FeihuaGame() {
       // 单行但多结果（同文不同诗）
       // 首先检查是否有且仅有一个选项在已学诗词中且熟练度 >= 2
       const masteredMatches = matchedLines[0].matches.filter(item => {
-        return getMasteredLevel(item.poem, store.poems) >= 2;
+        const pid = `${item.poem.name.trim()}:${item.poem.author.trim()}`;
+        return (store.poems[pid]?.level ?? 0) >= 2;
       });
 
       if (masteredMatches.length === 1) {
@@ -529,7 +508,8 @@ export function FeihuaGame() {
       let match = matches[0];
       if (matches.length > 1) {
         const mastered = matches.filter(m => {
-          return getMasteredLevel(m.poem, store.poems) >= 2;
+          const pid = `${m.poem.name.trim()}:${m.poem.author.trim()}`;
+          return (store.poems[pid]?.level ?? 0) >= 2;
         });
         if (mastered.length === 1) match = mastered[0];
       }
