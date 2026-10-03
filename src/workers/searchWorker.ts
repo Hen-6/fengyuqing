@@ -165,12 +165,14 @@ self.addEventListener('message', async (e) => {
                         if (!sharesEnoughChars(line, query)) continue;
                         
                         if (Math.abs(line.length - query.length) < 5) {
-                            const dist = levenshtein(line, query);
+                            const dist = levenshtein(line.replace(/[^\u4e00-\u9fa5]/g, ""), query.replace(/[^\u4e00-\u9fa5]/g, ""));
                             if (dist < bestDist) { bestDist = dist; bestLine = line; }
                         } else {
-                            for (let i = 0; i <= line.length - query.length; i++) {
-                                const sub = line.substring(i, i + query.length);
-                                const dist = levenshtein(sub, query);
+                            const cleanLineForSub = line.replace(/[^\u4e00-\u9fa5]/g, "");
+                            const cleanQueryForSub = query.replace(/[^\u4e00-\u9fa5]/g, "");
+                            for (let i = 0; i <= cleanLineForSub.length - cleanQueryForSub.length; i++) {
+                                const sub = cleanLineForSub.substring(i, i + cleanQueryForSub.length);
+                                const dist = levenshtein(sub, cleanQueryForSub);
                                 if (dist < bestDist) { bestDist = dist; bestLine = line; }
                             }
                         }
@@ -221,12 +223,14 @@ self.addEventListener('message', async (e) => {
                         if (!sharesEnoughChars(line, query)) continue;
                         
                         if (Math.abs(line.length - query.length) < 5) {
-                            const dist = levenshtein(line, query);
+                            const dist = levenshtein(line.replace(/[^\u4e00-\u9fa5]/g, ""), query.replace(/[^\u4e00-\u9fa5]/g, ""));
                             if (dist < bestDist) { bestDist = dist; bestLine = line; }
                         } else {
-                            for (let i = 0; i <= line.length - query.length; i++) {
-                                const sub = line.substring(i, i + query.length);
-                                const dist = levenshtein(sub, query);
+                            const cleanLineForSub = line.replace(/[^\u4e00-\u9fa5]/g, "");
+                            const cleanQueryForSub = query.replace(/[^\u4e00-\u9fa5]/g, "");
+                            for (let i = 0; i <= cleanLineForSub.length - cleanQueryForSub.length; i++) {
+                                const sub = cleanLineForSub.substring(i, i + cleanQueryForSub.length);
+                                const dist = levenshtein(sub, cleanQueryForSub);
                                 if (dist < bestDist) { bestDist = dist; bestLine = line; }
                             }
                         }
