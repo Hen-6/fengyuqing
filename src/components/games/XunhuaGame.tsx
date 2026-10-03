@@ -567,7 +567,7 @@ export function XunhuaGame() {
     );
   }
 
-  if (loadingTarget || !userLoaded) {
+  if (loadingTarget || !userLoaded || !target) {
     return (
       <div style={{ textAlign: "center", padding: "40px", color: "#666", fontFamily: "system-ui, sans-serif" }}>
         <p style={{ fontSize: "14px" }}>加载目标诗句…</p>
