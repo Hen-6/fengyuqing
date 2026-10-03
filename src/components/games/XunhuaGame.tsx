@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useUser } from "@/lib/userContext";
 import { upgradeToLevel } from "@/lib/srs";
 import { searchOnline, getPoemByKeyExport, SearchResult } from "@/lib/localSearch";
+import { matchPinyin } from "@/lib/pinyinUtils";
 
 // ─── Game types ───────────────────────────────────────────────────────────────
 
@@ -392,7 +393,7 @@ export function XunhuaGame() {
         const couplets = extractCouplets(res.poem);
         
         // 精确匹配
-        const exactMatch = couplets.find((c) => c.text === clean);
+        const exactMatch = couplets.find((c) => c.text === clean || matchPinyin(c.text, clean));
         if (exactMatch) {
           matchedCouplet = exactMatch;
           break; // Found an exact match, stop searching

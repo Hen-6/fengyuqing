@@ -8,6 +8,7 @@ import { OnlinePoemResult, searchOnline, searchByChar, getPoemByKeyExport } from
 import { useUser } from "@/lib/userContext";
 import { usePoems } from "@/components/PoemsContext";
 import { pinyin } from "pinyin-pro";
+import { matchPinyin, getCleanPinyin } from "@/lib/pinyinUtils";
 import { isVoiceSupported, startVoice, stopVoice } from "@/lib/voice";
 
 interface BotPoem {
@@ -442,23 +443,6 @@ export function FeihuaGame() {
   const submitTextVoiceMode = useCallback(async (text: string) => {
     const input = text.trim();
     if (!input) return;
-
-    const getCleanPinyin = (str: string) => {
-      try {
-        return pinyin(str, { toneType: "none", type: "array" })
-          .map(p => p.toLowerCase().replace(/[^a-z0-9]/g, ""))
-          .join("");
-      } catch (e) {
-        return "";
-      }
-    };
-
-    const matchPinyin = (a: string, b: string) => {
-      const pA = getCleanPinyin(a);
-      const pB = getCleanPinyin(b);
-      return pA && pB && pA === pB;
-    };
-
     const cleanInput = stripPunct(input);
     if (cleanInput.length < 4) {
       setFeedback({ ok: false, msg: `“${input}”字数太少` });
