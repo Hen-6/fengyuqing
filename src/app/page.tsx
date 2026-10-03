@@ -37,6 +37,13 @@ export default function HomePage() {
       tag: "挑战",
     },
     {
+      href: "/games/learn/",
+      emoji: "📖",
+      title: "学习模式",
+      desc: "随机抽查已学诗词，遮蔽内容，检验背诵",
+      tag: "复习",
+    },
+    {
       href: "/search/",
       emoji: "🔍",
       title: "搜索诗词",
