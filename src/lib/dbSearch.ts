@@ -7,6 +7,9 @@ export interface PoemResult {
   dynasty: string;
   content: string[];
   note: string;
+  trans?: string;
+  shangxi?: string;
+  tags?: string[];
   matchedLine: string;
   matchedLineIndex: number;
 }
@@ -77,7 +80,10 @@ export async function searchOnline(
                author: r.author,
                dynasty: r.dynasty || r.d || "未知",
                content: r.lines,
-               note: "",
+               note: r.note || "",
+               trans: r.trans || "",
+               shangxi: r.shangxi || "",
+               tags: r.tags || [],
                matchedLine: r.matchedLine || r.lines[0] || "",
                matchedLineIndex
            },
@@ -104,7 +110,7 @@ export async function getPoemByKeyExport(key: string): Promise<SearchResult | nu
   const cached = getPoemByKeyFast(key);
   if (cached) {
     return {
-      poem: { _id: key, name: cached.t, author: cached.a, dynasty: cached.d || "", content: cached.content || [], note: "", matchedLine: cached.content?.[0] || "", matchedLineIndex: 0 },
+      poem: { _id: key, name: cached.t, author: cached.a, dynasty: cached.d || "", content: cached.content || [], note: cached.note || "", trans: cached.trans || "", shangxi: cached.shangxi || "", tags: cached.tags || [], matchedLine: cached.content?.[0] || "", matchedLineIndex: 0 },
       score: 100,
     };
   }
@@ -114,7 +120,7 @@ export async function getPoemByKeyExport(key: string): Promise<SearchResult | nu
 
     const p = data.poem;
     return {
-      poem: { _id: p.id || key, name: p.t, author: p.a, dynasty: p.d || "", content: p.content || [], note: "", matchedLine: p.content?.[0] || "", matchedLineIndex: 0 },
+      poem: { _id: p.id || key, name: p.t, author: p.a, dynasty: p.d || "", content: p.content || [], note: p.note || "", trans: p.trans || "", shangxi: p.shangxi || "", tags: p.tags || [], matchedLine: p.content?.[0] || "", matchedLineIndex: 0 },
       score: 100,
     };
   } catch (error) {

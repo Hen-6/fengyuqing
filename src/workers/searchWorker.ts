@@ -48,8 +48,8 @@ async function loadDataset() {
     isLoading = true;
     loadPromise = (async () => {
         try {
-            console.log("[Worker] Fetching SUPER_DATASET_DEDUPED.json.gz...");
-            const res = await fetch('/data/SUPER_DATASET_DEDUPED.bin?v=4');
+            console.log("[Worker] Fetching SUPER_DATASET_V2.bin...");
+            const res = await fetch('/data/SUPER_DATASET_V2.bin?v=1');
             if (!res.ok) throw new Error("Failed to fetch dataset");
             const arrayBuffer = await res.arrayBuffer();
             
@@ -135,7 +135,7 @@ self.addEventListener('message', async (e) => {
                     if (exactMatches.length >= exactLimit) break;
                 }
                 self.postMessage({ id, results: exactMatches.map(p => ({
-                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score
+                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score, note: p.note, trans: p.trans, shangxi: p.shangxi, tags: p.tags
                 })) });
                 return;
             }
@@ -153,7 +153,7 @@ self.addEventListener('message', async (e) => {
                 if (exactMatches.length > 0) {
                     const finalExact = exactMatches.sort((a, b) => b.score - a.score).slice(0, exactLimit);
                     self.postMessage({ id, results: finalExact.map(p => ({
-                        id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score
+                        id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score, note: p.note, trans: p.trans, shangxi: p.shangxi, tags: p.tags
                     })) });
                     return;
                 }
@@ -184,7 +184,7 @@ self.addEventListener('message', async (e) => {
                 
                 const finalRough = roughMatches.sort((a, b) => b.score - a.score).slice(0, fuzzyLimit);
                 self.postMessage({ id, results: finalRough.map(p => ({
-                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score
+                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score, note: p.note, trans: p.trans, shangxi: p.shangxi, tags: p.tags
                 })) });
                 return;
             }
@@ -211,7 +211,7 @@ self.addEventListener('message', async (e) => {
                 if (exactMatches.length > 0) {
                     const finalExact = exactMatches.sort((a, b) => b.score - a.score).slice(0, exactLimit);
                     self.postMessage({ id, results: finalExact.map(p => ({
-                        id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score
+                        id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score, note: p.note, trans: p.trans, shangxi: p.shangxi, tags: p.tags
                     })) });
                     return;
                 }
@@ -242,7 +242,7 @@ self.addEventListener('message', async (e) => {
                 
                 const finalRough = roughMatches.sort((a, b) => b.score - a.score).slice(0, fuzzyLimit);
                 self.postMessage({ id, results: finalRough.map(p => ({
-                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score
+                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score, note: p.note, trans: p.trans, shangxi: p.shangxi, tags: p.tags
                 })) });
                 return;
             }

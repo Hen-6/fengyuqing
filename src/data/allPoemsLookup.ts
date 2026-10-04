@@ -2,7 +2,7 @@
 "use client";
 
 /** 全部诗词本地查找 */
-export interface PoemData { t: string; a: string; d: string; content: string[]; }
+export interface PoemData { t: string; a: string; d: string; content: string[]; note?: string; trans?: string; shangxi?: string; tags?: string[]; }
 
 let _cache: Map<string, PoemData> | null = null;
 
