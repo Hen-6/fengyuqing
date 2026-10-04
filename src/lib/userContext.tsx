@@ -24,7 +24,7 @@ import {
   setLevel as _setLevel,
   markPoemAnswered as _markPoemAnswered,
   upsertPoemProgress as _upsertPoemProgress,
-    saveCustomPoem,
+
   getPoemProgress as _getPoemProgress,
   deletePoemProgress as _deletePoemProgress,
 } from "@/lib/user";
@@ -54,6 +54,7 @@ interface UserContextValue {
   getPoemProgress: (poemId: string) => PoemProgress;
   deletePoemProgress: (poemId: string) => void;
   logout: () => Promise<void>;
+  saveCustomPoem: (poem: any) => void;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -290,6 +291,50 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     saveStore(fresh);
   }, []);
 
+  
+  // Automatically sweep invalid/garbage poems on load
+  useEffect(() => {
+    if (!hydrated || !userRef.current) return;
+    
+    // We run the sweep asynchronously so it doesn't block the UI
+    const runSweep = async () => {
+      try {
+        const { getPoemByKeyExport } = await import("./dbSearch");
+        let modified = false;
+        const currentPoems = { ...storeRef.current.poems };
+        
+        for (const poemId of Object.keys(currentPoems)) {
+          const poem = await getPoemByKeyExport(poemId);
+          // If the poem doesn't exist in the database (or custom poems), it's invalid garbage
+          if (!poem) {
+            console.log("Sweeping invalid poem from progress:", poemId);
+            delete currentPoems[poemId];
+            modified = true;
+            
+            // Delete from cloud
+            await supabase
+              .from("user_progress")
+              .delete()
+              .eq("user_id", userRef.current.id)
+              .eq("poem_id", poemId);
+          }
+        }
+        
+        if (modified) {
+          const newStore = { ...storeRef.current, poems: currentPoems };
+          saveStore(newStore);
+          _setStore(newStore);
+          console.log("Sweep complete.");
+        }
+      } catch (err) {
+        console.error("Error during sweep:", err);
+      }
+    };
+    
+    // Run it once shortly after hydration
+    setTimeout(runSweep, 2000);
+  }, [hydrated, user]);
+
   const [overview, setOverview] = useState({ total: 0, level3plus: 0, level5: 0, dueToday: 0, loaded: false });
 
   // Re-compute overview whenever store changes (after hydration)
@@ -314,8 +359,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       getPoemProgress,
       deletePoemProgress,
       logout,
+      saveCustomPoem,
     }),
-    [store, loaded, overview, user, syncing, setLevel, markPoemAnswered, upsertPoemProgress, getPoemProgress, deletePoemProgress, logout]
+    [store, loaded, overview, user, syncing, setLevel, markPoemAnswered, upsertPoemProgress, getPoemProgress, deletePoemProgress, logout, saveCustomPoem]
   );
 
   return (
