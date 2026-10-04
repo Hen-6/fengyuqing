@@ -305,9 +305,22 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         
         for (const poemId of Object.keys(currentPoems)) {
           const poem = await getPoemByKeyExport(poemId);
-          // If the poem doesn't exist in the database (or custom poems), it's invalid garbage
-          if (!poem) {
-            console.log("Sweeping invalid poem from progress:", poemId);
+          
+          let isValid = false;
+          if (poem) {
+             const returnedTitle = poem.poem.name;
+             const returnedAuthor = poem.poem.author;
+             const expectedTitle = poemId.split(':')[0];
+             const expectedAuthor = poemId.split(':')[1];
+             
+             // Must strictly match, or we consider it garbage
+             if (returnedTitle === expectedTitle && returnedAuthor === expectedAuthor) {
+                 isValid = true;
+             }
+          }
+          
+          if (!isValid) {
+            console.log("Sweeping invalid/dirty poem from progress:", poemId);
             delete currentPoems[poemId];
             modified = true;
             
@@ -334,6 +347,30 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     // Run it once shortly after hydration
     setTimeout(runSweep, 2000);
   }, [hydrated, user]);
+
+  
+  const saveCustomPoem = useCallback((poem: any) => {
+    if (typeof window === "undefined") return;
+    try {
+      const customPoemsStr = localStorage.getItem("fengyuqing_custom_poems_v1");
+      let customPoems = [];
+      if (customPoemsStr) {
+        customPoems = JSON.parse(customPoemsStr);
+      }
+      const existingIdx = customPoems.findIndex((p: any) => p.t === poem.t && p.a === poem.a);
+      if (existingIdx !== -1) {
+        customPoems[existingIdx] = poem;
+      } else {
+        customPoems.push(poem);
+      }
+      localStorage.setItem("fengyuqing_custom_poems_v1", JSON.stringify(customPoems));
+      import("./dbSearch").then(db => {
+        db.addCustomPoemsToWorker([poem]);
+      });
+    } catch (e) {
+      console.error("Error saving custom poem", e);
+    }
+  }, []);
 
   const [overview, setOverview] = useState({ total: 0, level3plus: 0, level5: 0, dueToday: 0, loaded: false });
 
