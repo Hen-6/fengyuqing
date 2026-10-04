@@ -1,0 +1,11 @@
+<script>
+async function test() {
+    console.log("Fetching...");
+    const response = await fetch('/data/SUPER_DATASET_DEDUPED.json.gz');
+    const ds = new DecompressionStream('gzip');
+    const decompressedStream = response.body.pipeThrough(ds);
+    const json = await new Response(decompressedStream).json();
+    console.log(json.poems.length);
+}
+test();
+</script>

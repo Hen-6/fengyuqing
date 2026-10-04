@@ -1,227 +1,204 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import { useState, useEffect } from "react";
+import { searchOnline, searchFullDataset, PoemResult, getPoemByKeyExport } from "@/lib/dbSearch";
 import { useUser } from "@/lib/userContext";
-import { generalSearch, SearchResult } from "@/lib/localSearch";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import { setLevel } from "@/lib/srs";
-import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
 
 export default function SearchPage() {
-  const { store, loaded, upsertPoemProgress, deletePoemProgress } = useUser();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<PoemResult[]>([]);
+  const [fullResults, setFullResults] = useState<PoemResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [allLoaded, setAllLoaded] = useState(false);
+  const [searchingFull, setSearchingFull] = useState(false);
+  const [searchMode, setSearchMode] = useState<'title' | 'content'>('content');
+  
+  const [editingPoem, setEditingPoem] = useState<PoemResult | null>(null);
+  const [editT, setEditT] = useState("");
+  const [editContent, setEditContent] = useState("");
 
-  const [visibleCount, setVisibleCount] = useState(40);
+  const { saveCustomPoem, upsertPoemProgress } = useUser();
 
   useEffect(() => {
-    setAllLoaded(false);
-  }, []);
-
-  // Read initial query from URL search params
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const q = params.get("q");
-      if (q) {
-        setQuery(q);
-        setDebouncedQuery(q);
-      }
-    }
-  }, []);
-
-  // Debounce input
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 400);
-    return () => clearTimeout(handler);
-  }, [query]);
-
-  // Execute search
-  useEffect(() => {
-    const q = debouncedQuery.trim();
-    if (!q) {
+    if (query.trim().length === 0) {
       setResults([]);
+      setFullResults([]);
       return;
     }
+    const delayDebounce = setTimeout(async () => {
+      setSearching(true);
+      const res = await searchOnline(query, 50, searchMode);
+      setResults(res);
+      setFullResults([]);
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(delayDebounce);
+  }, [query, searchMode]);
 
-    let isMounted = true;
-    setSearching(true);
-    generalSearch(q, 2000)
-      .then((res) => {
-        if (isMounted) {
-          setResults(res);
-          setVisibleCount(40); // Reset count on new query
-        }
-      })
-      .catch((err) => {
-        console.error("Search failed:", err);
-      })
-      .finally(() => {
-        if (isMounted) setSearching(false);
-      });
+  const handleDeepSearch = async () => {
+    if (!query.trim()) return;
+    setSearchingFull(true);
+    const res = await searchFullDataset(query, 50);
+    setFullResults(res);
+    setSearchingFull(false);
+  };
 
-    return () => {
-      isMounted = false;
+  const handleEditClick = (p: PoemResult) => {
+    setEditingPoem(p);
+    setEditT(p.t);
+    setEditContent(p.content.join("\n"));
+  };
+
+  const handleSaveImport = async () => {
+    if (!editingPoem) return;
+    const newContent = editContent.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+    const customPoem: PoemResult = {
+      ...editingPoem,
+      t: editT,
+      content: newContent,
     };
-  }, [debouncedQuery]);
+    // Save to local storage and worker
+    saveCustomPoem(customPoem);
+    
+    // Check if it exists in current pool, if not it will be now!
+    // We auto-add it to user progress so it shows up in Learn Mode
+    const key = `${customPoem.t}:${customPoem.a}`;
+    await upsertPoemProgress(key, 0); // initial review
 
-  if (!loaded) return null;
+    setEditingPoem(null);
+    alert("已成功修改并导入到你的个人诗词库！现在飞花令和学习模式都能正常使用它了。");
+  };
 
   return (
-    <div className="min-h-screen paper-texture px-6 py-8">
-      <div className="mx-auto max-w-md space-y-6">
-        <header className="flex items-center gap-4">
-          <Link href="/" className="text-2xl text-text-muted hover:text-accent transition">←</Link>
-          <h1 className="text-xl font-bold text-ink">搜索诗词</h1>
-        </header>
+    <main className="min-h-screen bg-paper bg-shuimo bg-cover bg-center bg-fixed font-serif text-ink p-4 sm:p-8">
+      <div className="max-w-3xl mx-auto space-y-8">
+        <h1 className="text-3xl font-bold text-center tracking-widest text-ink mt-8">
+          诗词检索
+        </h1>
 
-        <div className="relative">
+        <div className="bg-paper/80 backdrop-blur-md rounded-xl p-4 shadow-xl border border-ink/10">
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setSearchMode('content')}
+              className={`px-4 py-2 rounded ${searchMode === 'content' ? 'bg-primary text-white' : 'bg-ink/10'}`}
+            >
+              按诗句搜索
+            </button>
+            <button
+              onClick={() => setSearchMode('title')}
+              className={`px-4 py-2 rounded ${searchMode === 'title' ? 'bg-primary text-white' : 'bg-ink/10'}`}
+            >
+              按标题/作者
+            </button>
+          </div>
           <input
             type="text"
+            className="w-full bg-transparent border-b-2 border-ink/30 focus:border-primary p-2 text-xl outline-none"
+            placeholder="输入诗句、拼音、标题或作者（支持拼音搜诗句）..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索作者、标题或诗句..."
-            className="w-full rounded-xl border border-border bg-surface px-4 py-3 pl-10 text-ink placeholder:text-text-muted focus:border-accent focus:outline-none transition"
-            autoFocus
           />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">🔍</span>
-          {searching && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted animate-pulse">
-              搜索中...
-            </span>
-          )}
         </div>
 
-        {debouncedQuery.trim() && !searching && results.length === 0 && (
-          <p className="text-center text-text-muted py-8 text-sm">
-            未找到包含「{debouncedQuery}」的诗词
-          </p>
+        {searching && <p className="text-center text-ink/60">正在精修小库中检索...</p>}
+
+        {!searching && results.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold">精修小库搜索结果</h2>
+            {results.map((p, idx) => (
+              <OnlinePoemCard key={idx} result={p as any} />
+            ))}
+          </div>
         )}
 
-        <div className="space-y-4">
-          {results.slice(0, visibleCount).map((res) => {
-            const pid = `${res.poem.name.trim()}:${res.poem.author.trim()}`;
-            const lookup = allLoaded ? getPoemByKeyFast(pid) : null;
-            const dynasty = lookup?.d || res.poem.dynasty || "未知";
-            return (
-              <SearchResultCard
-                key={pid}
-                result={res}
-                dynasty={dynasty}
-                currentLevel={store.poems[pid]?.level ?? 1}
-                autoExpand={results.length === 1}
-                onSetLevel={(lvl) => {
-                  if (lvl === 1) {
-                    deletePoemProgress(pid);
-                  } else {
-                    upsertPoemProgress(pid, (prev) => setLevel(prev, lvl));
-                  }
-                }}
-              />
-            );
-          })}
-        </div>
-
-        {results.length > visibleCount && (
-          <div className="pt-4 text-center">
+        {!searching && query && (
+          <div className="text-center space-y-4 mt-8">
+            <p className="text-ink/60">
+              没找到满意的诗词？或者想找冷门绝句？
+            </p>
             <button
-              onClick={() => setVisibleCount((prev) => prev + 100)}
-              className="px-6 py-2.5 rounded-xl border border-border bg-surface text-sm font-medium text-ink hover:border-accent hover:text-accent transition shadow-sm active:scale-95"
+              onClick={handleDeepSearch}
+              disabled={searchingFull}
+              className="px-6 py-3 bg-secondary text-white rounded-full font-bold shadow-md hover:bg-secondary/90 transition-all disabled:opacity-50"
             >
-              加载更多诗词 (已显示 {Math.min(visibleCount, results.length)}/{results.length})
+              {searchingFull ? "正在 37 万全量古籍库中深度检索..." : "去 37 万首全量古籍库中深度搜索"}
             </button>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
 
-function SearchResultCard({
-  result,
-  dynasty,
-  currentLevel,
-  onSetLevel,
-  autoExpand,
-}: {
-  result: SearchResult;
-  dynasty: string;
-  currentLevel: number;
-  onSetLevel: (level: number) => void;
-  autoExpand?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(autoExpand ?? false);
-
-  useEffect(() => {
-    if (autoExpand) {
-      setExpanded(true);
-    }
-  }, [autoExpand]);
-
-  return (
-    <div className="rounded-xl border border-border bg-surface overflow-hidden transition hover:border-accent">
-      <div 
-        className="px-4 py-3 cursor-pointer select-none flex justify-between items-start"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div>
-          <div className="font-medium text-ink">{result.poem.name}</div>
-          <div className="text-xs text-text-muted mt-0.5">
-            <span className="opacity-70">[{dynasty}]</span> <span className="ml-1">{result.poem.author}</span>
-          </div>
-          {!expanded && result.poem.matchedLine && (
-            <div className="mt-2 text-sm text-ink opacity-80 line-clamp-1" dangerouslySetInnerHTML={{ __html: result.poem.matchedLine }} />
-          )}
-        </div>
-        
-        {/* Current Level Badge */}
-        <div className="shrink-0 ml-4 flex flex-col items-end">
-          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${currentLevel > 1 ? 'bg-accent text-white' : 'bg-gray-200 text-gray-500'}`}>
-            {currentLevel}
-          </span>
-          <span className="text-[10px] text-text-muted mt-1">{currentLevel > 1 ? '已学' : '未学'}</span>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="px-4 pb-4 border-t border-border/50 pt-3">
-          <div className="mb-4 flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-text-muted">调整熟练度：</span>
-            {([1, 2, 3, 4, 5] as const).map((lvl) => (
-              <button
-                key={lvl}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSetLevel(lvl);
-                }}
-                className={`px-2 py-1 rounded text-xs font-medium transition ${
-                  currentLevel === lvl
-                    ? "bg-accent text-white"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                }`}
-              >
-                {lvl}级
-              </button>
+        {fullResults.length > 0 && (
+          <div className="space-y-4 mt-8 p-4 bg-primary/10 rounded-xl border border-primary/20">
+            <h2 className="text-xl font-bold text-primary">全库深度检索结果</h2>
+            <p className="text-sm text-ink/60 mb-4">
+              这里是全量古籍库（37万首）的原始内容。你可以直接点击【修改并导入】，将它清理并加入你的专属小库中。
+            </p>
+            {fullResults.map((p, idx) => (
+              <div key={idx} className="bg-paper rounded p-4 shadow mb-2 relative">
+                <h3 className="text-lg font-bold">《{p.t}》</h3>
+                <p className="text-sm text-ink/60 mb-2">{p.d} · {p.a}</p>
+                <div className="space-y-1 mb-4 text-ink/80">
+                  {p.content.slice(0, 4).map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                  {p.content.length > 4 && <p>...</p>}
+                </div>
+                <button
+                  onClick={() => handleEditClick(p)}
+                  className="px-4 py-2 bg-primary text-white rounded shadow text-sm absolute top-4 right-4"
+                >
+                  修改并导入
+                </button>
+              </div>
             ))}
           </div>
-          
-          <div className="bg-paper/50 rounded p-3 text-sm text-ink/90 space-y-1">
-            {result.poem.content.map((line, i) => {
-               // Only highlight exact match if we want, but since generalSearch might not have highlight HTML in all lines, we just render raw string or matched line if it's the highlighted one.
-               const isMatched = i === result.poem.matchedLineIndex && result.poem.matchedLine.includes('『');
-               return (
-                 <div key={i} dangerouslySetInnerHTML={{ __html: isMatched ? result.poem.matchedLine : line }} />
-               );
-            })}
+        )}
+      </div>
+
+      {editingPoem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-paper w-full max-w-xl rounded-xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold">修改并导入诗词</h2>
+            <p className="text-sm text-ink/60">
+              全库抓取的古籍数据可能存在标题被生硬叫做“句”，或者字词（惹/染）使用繁体/异体字的问题。请你在这里亲自修正它们，保证你的诗词库一尘不染。
+            </p>
+            
+            <div>
+              <label className="block text-sm font-bold mb-1">标题修正</label>
+              <input
+                type="text"
+                value={editT}
+                onChange={e => setEditT(e.target.value)}
+                className="w-full border border-ink/20 rounded p-2 bg-transparent"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-bold mb-1">内容修正（可修改错别字、异体字）</label>
+              <textarea
+                value={editContent}
+                onChange={e => setEditContent(e.target.value)}
+                rows={10}
+                className="w-full border border-ink/20 rounded p-2 bg-transparent"
+              />
+            </div>
+
+            <div className="flex gap-4 justify-end mt-4">
+              <button
+                onClick={() => setEditingPoem(null)}
+                className="px-4 py-2 bg-ink/10 rounded"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveImport}
+                className="px-4 py-2 bg-primary text-white rounded font-bold"
+              >
+                保存并导入我的专属小库
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
