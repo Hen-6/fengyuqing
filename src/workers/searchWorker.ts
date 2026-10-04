@@ -48,8 +48,8 @@ async function loadDataset() {
     isLoading = true;
     loadPromise = (async () => {
         try {
-            console.log("[Worker] Fetching SUPER_DATASET_V2.bin...");
-            const res = await fetch('/data/SUPER_DATASET_V2.bin?v=1');
+            console.log("[Worker] Fetching SUPER_DATASET_DEDUPED.bin...");
+            const res = await fetch('/data/SUPER_DATASET_DEDUPED.bin?v=5');
             if (!res.ok) throw new Error("Failed to fetch dataset");
             const arrayBuffer = await res.arrayBuffer();
             
