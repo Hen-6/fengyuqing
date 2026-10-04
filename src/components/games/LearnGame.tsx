@@ -7,7 +7,7 @@ import { getPoemByKeyExport, SearchResult } from "@/lib/localSearch";
 import { LEVEL_LABELS, setLevel } from "@/lib/srs";
 
 export function LearnGame() {
-  const { store, loaded, upsertPoemProgress } = useUser();
+  const { store, loaded, upsertPoemProgress, deletePoemProgress } = useUser();
   const [currentPoem, setCurrentPoem] = useState<SearchResult | null>(null);
   const [currentKey, setCurrentKey] = useState<string>("");
   const [revealed, setRevealed] = useState(false);
@@ -35,9 +35,17 @@ export function LearnGame() {
     }
 
     const poem = await getPoemByKeyExport(randomKey);
+    if (!poem) {
+      // Auto-delete invalid key and retry
+      deletePoemProgress(randomKey);
+      const newStore = { ...currentStore, poems: { ...currentStore.poems } };
+      delete newStore.poems[randomKey];
+      startNext(newStore);
+      return;
+    }
     setCurrentKey(randomKey);
     setCurrentPoem(poem);
-  }, [store, currentKey]);
+  }, [store, currentKey, deletePoemProgress]);
 
   useEffect(() => {
     if (loaded && !initialized) {
@@ -90,7 +98,7 @@ export function LearnGame() {
             </Link>
           </div>
         ) : (
-          currentPoem ? (
+          currentPoem && (
             <div style={{ background: "#f9f9f9", borderRadius: "8px", padding: "32px 16px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
               <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#333", marginBottom: "8px", margin: 0 }}>
                 {currentPoem.poem.name}
@@ -119,7 +127,39 @@ export function LearnGame() {
 
                   <div style={{ borderTop: "1px solid #eee", paddingTop: "24px" }}>
                     <p style={{ fontSize: "14px", color: "#666", marginBottom: "16px", fontWeight: "bold" }}>背诵情况如何？</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+
+                  {/* Translation and Appreciation */}
+                  <div style={{ marginBottom: "32px", textAlign: "left", display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {currentPoem.poem.tags && currentPoem.poem.tags.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center", marginBottom: "8px" }}>
+                        {currentPoem.poem.tags.map((t: string, i: number) => (
+                          <span key={i} style={{ background: "#f0f8ff", color: "#2980b9", border: "1px solid #bce0fd", padding: "2px 8px", borderRadius: "12px", fontSize: "12px" }}>
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {currentPoem.poem.trans && (
+                      <details style={{ background: "#f5f5f5", padding: "12px", borderRadius: "8px" }}>
+                        <summary style={{ cursor: "pointer", fontWeight: "bold", fontSize: "14px", color: "#333", outline: "none" }}>译文</summary>
+                        <div style={{ marginTop: "8px", fontSize: "14px", color: "#555", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>{currentPoem.poem.trans}</div>
+                      </details>
+                    )}
+                    {currentPoem.poem.note && (
+                      <details style={{ background: "#f5f5f5", padding: "12px", borderRadius: "8px" }}>
+                        <summary style={{ cursor: "pointer", fontWeight: "bold", fontSize: "14px", color: "#333", outline: "none" }}>注释</summary>
+                        <div style={{ marginTop: "8px", fontSize: "14px", color: "#555", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>{currentPoem.poem.note}</div>
+                      </details>
+                    )}
+                    {currentPoem.poem.shangxi && (
+                      <details style={{ background: "#f5f5f5", padding: "12px", borderRadius: "8px" }}>
+                        <summary style={{ cursor: "pointer", fontWeight: "bold", fontSize: "14px", color: "#333", outline: "none" }}>赏析</summary>
+                        <div style={{ marginTop: "8px", fontSize: "14px", color: "#555", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>{currentPoem.poem.shangxi}</div>
+                      </details>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {[1, 2, 3, 4, 5].map((lvl) => {
                         const isCurrent = store.poems[currentKey]?.level === lvl;
                         return (
@@ -152,11 +192,6 @@ export function LearnGame() {
                   </div>
                 </div>
               )}
-            </div>
-          ) : (
-            <div style={{ padding: "40px" }}>
-              <p>无法加载该诗词数据（{currentKey}）</p>
-              <button onClick={() => startNext(store)} style={{ marginTop: "16px", padding: "8px 16px", cursor: "pointer" }}>跳过</button>
             </div>
           )
         )}
