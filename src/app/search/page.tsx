@@ -23,6 +23,7 @@ export default function SearchPage() {
   const [selectedFullPoem, setSelectedFullPoem] = useState<any>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editAuthor, setEditAuthor] = useState("");
+  const [editDynasty, setEditDynasty] = useState("");
   const [editContent, setEditContent] = useState("");
 
   const handleDeepSearch = useCallback(async () => {
@@ -179,6 +180,7 @@ export default function SearchPage() {
                           setSelectedFullPoem(p);
                           setEditTitle(p.t);
                           setEditAuthor(p.a);
+                          setEditDynasty(p.d || "未知");
                           setEditContent(p.content.join('\n'));
                         }}
                         className="px-3 py-1.5 bg-accent/10 text-accent text-xs rounded-lg hover:bg-accent/20 transition"
@@ -219,6 +221,10 @@ export default function SearchPage() {
                   <input value={editAuthor} onChange={e => setEditAuthor(e.target.value)} className="w-full border rounded p-2 bg-paper" />
                 </div>
                 <div>
+                  <label className="text-xs text-text-muted block mb-1">朝代</label>
+                  <input value={editDynasty} onChange={e => setEditDynasty(e.target.value)} className="w-full border rounded p-2 bg-paper" />
+                </div>
+                <div>
                   <label className="text-xs text-text-muted block mb-1">正文 (请修改错别字，每句一行)</label>
                   <textarea value={editContent} onChange={e => setEditContent(e.target.value)} className="w-full border rounded p-2 bg-paper h-48 text-sm" />
                 </div>
@@ -230,7 +236,7 @@ export default function SearchPage() {
                      const customP = {
                         t: editTitle.trim(),
                         a: editAuthor.trim(),
-                        d: selectedFullPoem.d || "未知",
+                        d: editDynasty.trim(),
                         content: editContent.split('\n').map(l => l.trim()).filter(Boolean),
                         note: selectedFullPoem.note || "",
                         trans: selectedFullPoem.trans || "",
