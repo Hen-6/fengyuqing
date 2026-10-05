@@ -11,7 +11,7 @@ setTimeout(async () => {
         const fullBuf = await fullResp.arrayBuffer();
         const fullDecompressed = pako.inflate(fullBuf);
         const fullStr = new TextDecoder().decode(fullDecompressed);
-        fullPoems = JSON.parse(fullStr);
+        fullPoems = JSON.parse(fullStr).poems;
     } catch (e) {
         console.error("Failed to load full dataset in background:", e);
     }

@@ -138,9 +138,15 @@ export function searchFullDataset(query: string, limit = 50): Promise<PoemResult
     return new Promise((resolve) => {
         const id = Math.random().toString(36).substring(7);
         const handler = (e: MessageEvent) => {
-            if (e.data.type === 'SEARCH_FULL_RESULT' && e.data.id === id) {
-                worker?.removeEventListener('message', handler);
-                resolve(e.data.results);
+            if (e.data.id === id) {
+                if (e.data.type === 'SEARCH_FULL_RESULT') {
+                    worker?.removeEventListener('message', handler);
+                    resolve(e.data.results);
+                } else if (e.data.error) {
+                    worker?.removeEventListener('message', handler);
+                    console.error("Worker error:", e.data.error);
+                    resolve([]);
+                }
             }
         };
         worker?.addEventListener('message', handler);

@@ -3,85 +3,59 @@ const fs = require('fs');
 const path = 'src/workers/searchWorker.ts';
 let code = fs.readFileSync(path, 'utf8');
 
-// We need to add full dataset loading and searching.
-const injection = `
-let fullDataset: any[] = [];
-let isFullLoading = false;
-let fullLoadPromise: Promise<void> | null = null;
+// 1. Add fullPoems variable and background loader
+const loaderCode = `
+let fullPoems: any[] = [];
 
-async function loadFullDataset() {
-    if (fullDataset.length > 0) return;
-    if (isFullLoading && fullLoadPromise) return fullLoadPromise;
-    
-    isFullLoading = true;
-    fullLoadPromise = (async () => {
-        try {
-            console.log("[Worker] Fetching SUPER_DATASET_FULL.bin...");
-            const res = await fetch('/data/SUPER_DATASET_FULL.bin?v=1');
-            if (!res.ok) throw new Error("Failed to fetch full dataset");
-            const arrayBuffer = await res.arrayBuffer();
-            
-            // Inflate
-            const uint8Array = new Uint8Array(arrayBuffer);
-            const decompressed = pako.inflate(uint8Array, { to: 'string' });
-            
-            const parsed = JSON.parse(decompressed);
-            fullDataset = parsed.poems;
-            console.log("[Worker] Full dataset loaded, items:", fullDataset.length);
-        } catch (e) {
-            console.error("[Worker] Failed to load full dataset:", e);
-        } finally {
-            isFullLoading = false;
-        }
-    })();
-    return fullLoadPromise;
-}
-
-// Background idle load for full dataset
-setTimeout(() => {
-    loadFullDataset().catch(() => {});
+// Silently load full dataset in background
+setTimeout(async () => {
+    try {
+        const fullResp = await fetch('/data/SUPER_DATASET_FULL.bin?v=full1');
+        const fullBuf = await fullResp.arrayBuffer();
+        const fullDecompressed = pako.inflate(fullBuf);
+        const fullStr = new TextDecoder().decode(fullDecompressed);
+        fullPoems = JSON.parse(fullStr);
+        console.log("Full dataset loaded in background, size:", fullPoems.length);
+    } catch (e) {
+        console.error("Failed to load full dataset in background:", e);
+    }
 }, 3000);
 `;
+code = code.replace(/let poems: any\[\] = \[\];/, 'let poems: any[] = [];\n' + loaderCode);
 
-code = code.replace(/let dataset.*?;/s, match => injection + '\n' + match);
-
-// Also handle SEARCH_FULL
-const caseFull = `
-        case 'SEARCH_FULL':
-            if (fullDataset.length === 0) {
-                await loadFullDataset();
+// 2. Add handlers
+const handlers = `
+        if (type === 'ADD_CUSTOM') {
+            const { customPoems } = e.data;
+            if (customPoems && Array.isArray(customPoems)) {
+                poems.push(...customPoems);
+                console.log(\`Added \${customPoems.length} custom poems. Worker total: \${poems.length}\`);
             }
-            // Execute the same fuzzy/pinyin search but over fullDataset
-            let fRes = [];
-            let fQuery = data.query || "";
-            let fLimit = data.limit || 50;
-            
-            // Simple exact/fuzzy search for full dataset to keep it fast
-            for (let i = 0; i < fullDataset.length; i++) {
-                const p = fullDataset[i];
-                if (p.t.includes(fQuery) || p.a.includes(fQuery) || p.content.some((l: string) => l.includes(fQuery))) {
-                    fRes.push(p);
-                    if (fRes.length >= fLimit) break;
-                }
-            }
-            self.postMessage({ type: 'SEARCH_FULL_RESULT', results: fRes, id: data.id });
-            break;
+            self.postMessage({ id, status: 'ok' });
+            return;
+        }
 
-        case 'ADD_CUSTOM':
-            const customPoems = data.poems || [];
-            for (const cp of customPoems) {
-                // Prepend to small dataset so it has priority
-                const idx = dataset.findIndex(p => p.t === cp.t && p.a === cp.a);
-                if (idx !== -1) {
-                    dataset[idx] = cp;
+        if (type === 'SEARCH_FULL') {
+            const limitVal = limit || 50;
+            const res = [];
+            for (const p of fullPoems) {
+                if (p.t.includes(query) || p.a.includes(query)) {
+                    res.push({ ...p, id: generatePseudoId(p.t, p.a) });
                 } else {
-                    dataset.unshift(cp);
+                    for (const line of p.content) {
+                        if (line.includes(query)) {
+                            res.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line });
+                            break;
+                        }
+                    }
                 }
+                if (res.length >= limitVal) break;
             }
-            self.postMessage({ type: 'ADD_CUSTOM_RESULT', id: data.id });
-            break;
+            self.postMessage({ type: 'SEARCH_FULL_RESULT', id, results: res });
+            return;
+        }
 `;
 
-code = code.replace(/case 'GET_POEM':/s, match => caseFull + '\n        ' + match);
+code = code.replace(/if \(type === 'GET_POEM'\) {/, handlers + '\n        if (type === \'GET_POEM\') {');
 
 fs.writeFileSync(path, code);
