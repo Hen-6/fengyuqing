@@ -191,6 +191,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     const fresh = { ...initial, initialized: true };
     _setStore(fresh);
     setHydrated(true);
+    
+    // Inject custom poems into worker on boot
+    const customPoemsStr = localStorage.getItem("fengyuqing_custom_poems_v1");
+    if (customPoemsStr) {
+      try {
+        const customPoems = JSON.parse(customPoemsStr);
+        if (Array.isArray(customPoems) && customPoems.length > 0) {
+          import("./dbSearch").then(db => db.addCustomPoemsToWorker(customPoems));
+        }
+      } catch (e) {
+        console.error("Failed to inject custom poems", e);
+      }
+    }
   }, []);
 
   // Watch for localStorage changes from other tabs/windows
