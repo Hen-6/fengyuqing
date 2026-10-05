@@ -78,7 +78,7 @@ export function LearnGame() {
   }
 
   return (
-    <div style={{ background: "#fff", minHeight: "100vh", padding: "16px", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ background: "#fff", minHeight: "100vh", padding: "16px", paddingTop: "calc(max(env(safe-area-inset-top), 20px) + 16px)", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "600px", margin: "0 auto 24px" }}>
         <Link href="/" style={{ color: "#333", textDecoration: "none", fontSize: "14px", fontWeight: "bold" }}>

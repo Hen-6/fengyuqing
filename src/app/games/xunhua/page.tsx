@@ -5,7 +5,7 @@ import { XunhuaGame } from "@/components/games/XunhuaGame";
 
 export default function XunhuaPage() {
   return (
-    <div style={{ background: "#fff", minHeight: "100vh" }}>
+    <div style={{ background: "#fff", minHeight: "100vh" }} className="safe-pt">
       <div style={{ maxWidth: "480px", margin: "0 auto" }}>
         <header className="flex items-center gap-4 mb-4">
           <Link href="/" className="text-2xl text-gray-400 hover:text-gray-700 transition">←</Link>

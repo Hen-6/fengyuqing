@@ -37,7 +37,7 @@ export default function DailyPage() {
   }
 
   return (
-    <div className="min-h-screen paper-texture px-6 py-8">
+    <div className="min-h-screen paper-texture px-6 pb-8 safe-pt">
       <div className="mx-auto max-w-md space-y-6">
         <header className="flex items-center gap-4">
           <Link href="/" className="text-2xl text-text-muted hover:text-accent transition">←</Link>
