@@ -34,6 +34,36 @@ export default function ProgressPage() {
     (p) => !OBJECTID_RE.test(p.poemId) && p.level > 1
   );
 
+  const [workerLookupMap, setWorkerLookupMap] = useState<Record<string, {d: string}>>({});
+
+  useEffect(() => {
+    if (!allLoaded) return;
+    const fetchMissing = async () => {
+      const promises = practiced.map(async (prog) => {
+        if (rankMap.has(prog.poemId)) return null;
+        try {
+          const res = await getPoemByKeyExport(prog.poemId);
+          if (res && res.poem) {
+            return { id: prog.poemId, d: res.poem.dynasty };
+          }
+        } catch (e) {}
+        return null;
+      });
+      const results = await Promise.all(promises);
+      const newMap: Record<string, {d: string}> = {};
+      let changed = false;
+      results.forEach(r => {
+        if (r) {
+          newMap[r.id] = { d: r.d };
+          changed = true;
+        }
+      });
+      if (changed) setWorkerLookupMap(newMap);
+    };
+    fetchMissing();
+  }, [allLoaded, practiced.length, rankMap]);
+
+
   type PoemEntry = { key: string; title: string; author: string; dynasty: string; p: PoemProgress };
   const byLevel: Record<string, PoemEntry[]> = {
     "2": [], "3": [], "4": [], "5": [],
@@ -46,7 +76,7 @@ export default function ProgressPage() {
     const parts = prog.poemId.split(":");
     const t = info?.t || lookup?.t || parts[0] || prog.poemId;
     const a = info?.a || lookup?.a || parts.slice(1).join(":") || "";
-    const d = info?.d || lookup?.d || "未知";
+    const d = info?.d || lookup?.d || workerLookupMap[prog.poemId]?.d || "未知";
 
     const lvl = String(prog.level) as "2" | "3" | "4" | "5";
     if (!byLevel[lvl]) byLevel[lvl] = [];
