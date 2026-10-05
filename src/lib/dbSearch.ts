@@ -158,6 +158,6 @@ export function addCustomPoemsToWorker(poems: PoemResult[]): Promise<void> {
             }
         };
         worker?.addEventListener('message', handler);
-        worker?.postMessage({ type: 'ADD_CUSTOM', poems, id });
+        worker?.postMessage({ type: 'ADD_CUSTOM', customPoems: poems, id });
     });
 }

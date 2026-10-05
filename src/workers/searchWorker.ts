@@ -4,6 +4,19 @@ let globalPoemsCache: any[] | null = null;
 let isLoading = false;
 let loadPromise: Promise<void> | null = null;
 
+let fullPoems: any[] = [];
+setTimeout(async () => {
+    try {
+        const fullResp = await fetch("/data/SUPER_DATASET_FULL.bin");
+        const fullBuf = await fullResp.arrayBuffer();
+        const fullDecompressed = pako.inflate(fullBuf);
+        const fullStr = new TextDecoder().decode(fullDecompressed);
+        fullPoems = JSON.parse(fullStr);
+    } catch (e) {
+        console.error("Failed to load full dataset in background:", e);
+    }
+}, 3000);
+
 function levenshtein(s: string, t: string) {
     if (!s.length) return t.length;
     if (!t.length) return s.length;
@@ -88,6 +101,37 @@ self.addEventListener('message', async (e) => {
         const poems = globalPoemsCache;
 
         // GET SINGLE POEM BY KEY (For progress page / details)
+        
+        if (type === 'ADD_CUSTOM') {
+            const { customPoems } = e.data;
+            if (customPoems && Array.isArray(customPoems)) {
+                poems.push(...customPoems);
+                console.log(`Added ${customPoems.length} custom poems. Worker total: ${poems.length}`);
+            }
+            self.postMessage({ type: 'ADD_CUSTOM_RESULT', id, status: 'ok' });
+            return;
+        }
+
+        if (type === 'SEARCH_FULL') {
+            const limitVal = limit || 50;
+            const res = [];
+            for (const p of fullPoems) {
+                if (p.t.includes(query) || p.a.includes(query)) {
+                    res.push({ ...p, id: generatePseudoId(p.t, p.a) });
+                } else {
+                    for (const line of p.content) {
+                        if (line.includes(query)) {
+                            res.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line });
+                            break;
+                        }
+                    }
+                }
+                if (res.length >= limitVal) break;
+            }
+            self.postMessage({ type: 'SEARCH_FULL_RESULT', id, results: res });
+            return;
+        }
+
         if (type === 'GET_POEM') {
             const title = key.split(':')[0];
             const author = key.split(':')[1];
