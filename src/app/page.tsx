@@ -22,6 +22,7 @@ export default function HomePage() {
       desc: "选一个字，积累诗词底蕴，不限对答次数",
       tag: "入门",
     },
+    /*
     {
       href: "/games/jielong/",
       emoji: "🔗",
@@ -29,6 +30,7 @@ export default function HomePage() {
       desc: "末字相接，续出诗句（≥4字）",
       tag: "进阶",
     },
+    */
     {
       href: "/games/xunhua/",
       emoji: "🌺",
