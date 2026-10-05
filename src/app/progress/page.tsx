@@ -13,10 +13,12 @@ import { getPoemByKeyExport } from "@/lib/dbSearch";
 import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
+
 export default function ProgressPage() {
   const { store, loaded, upsertPoemProgress, deletePoemProgress, hardNuke } = useUser();
   const [rankMap, setRankMap] = useState<Map<string, { t: string; a: string; d: string }>>(new Map());
   const [allLoaded, setAllLoaded] = useState(false);
+  const [workerLookupMap, setWorkerLookupMap] = useState<Record<string, {d: string}>>({});
 
   useEffect(() => {
     const list = getRankList();
@@ -28,16 +30,13 @@ export default function ProgressPage() {
     setAllLoaded(true);
   }, []);
 
-  if (!loaded) return null;
-
-  const practiced = Object.values(store.poems).filter(
+  const practiced = store?.poems ? Object.values(store.poems).filter(
     (p) => !OBJECTID_RE.test(p.poemId) && p.level > 1
-  );
-
-  const [workerLookupMap, setWorkerLookupMap] = useState<Record<string, {d: string}>>({});
+  ) : [];
 
   useEffect(() => {
-    if (!allLoaded) return;
+    if (!allLoaded || practiced.length === 0) return;
+    let isActive = true;
     const fetchMissing = async () => {
       const promises = practiced.map(async (prog) => {
         if (rankMap.has(prog.poemId)) return null;
@@ -50,6 +49,7 @@ export default function ProgressPage() {
         return null;
       });
       const results = await Promise.all(promises);
+      if (!isActive) return;
       const newMap: Record<string, {d: string}> = {};
       let changed = false;
       results.forEach(r => {
@@ -58,13 +58,16 @@ export default function ProgressPage() {
           changed = true;
         }
       });
-      if (changed) setWorkerLookupMap(newMap);
+      if (changed) setWorkerLookupMap(prev => ({...prev, ...newMap}));
     };
     fetchMissing();
+    return () => { isActive = false; };
   }, [allLoaded, practiced.length, rankMap]);
 
+  if (!loaded) return null;
 
   type PoemEntry = { key: string; title: string; author: string; dynasty: string; p: PoemProgress };
+
   const byLevel: Record<string, PoemEntry[]> = {
     "2": [], "3": [], "4": [], "5": [],
   };
