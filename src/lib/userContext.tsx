@@ -55,6 +55,7 @@ interface UserContextValue {
   deletePoemProgress: (poemId: string) => void;
   logout: () => Promise<void>;
   saveCustomPoem: (poem: any) => void;
+  hardNuke: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -292,88 +293,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   
-  // Automatically sweep invalid/garbage poems on load
-  useEffect(() => {
-    if (!hydrated || !userRef.current) return;
-    
-    // We run the sweep asynchronously so it doesn't block the UI
-    const runSweep = async () => {
-      try {
-        const { getPoemByKeyExport } = await import("./dbSearch");
-        let modified = false;
-        const currentPoems = { ...storeRef.current.poems };
-        
-        for (const poemId of Object.keys(currentPoems)) {
-          const poem = await getPoemByKeyExport(poemId);
-          
-          let isValid = false;
-          if (poem) {
-             const returnedTitle = poem.poem.name;
-             const returnedAuthor = poem.poem.author;
-             const expectedTitle = poemId.split(':')[0];
-             const expectedAuthor = poemId.split(':')[1];
-             
-             // Must strictly match, or we consider it garbage
-             if (returnedTitle === expectedTitle && returnedAuthor === expectedAuthor) {
-                 isValid = true;
-             }
-          }
-          
-          if (!isValid) {
-            console.log("Sweeping invalid/dirty poem from progress:", poemId);
-            delete currentPoems[poemId];
-            modified = true;
-            
-            // Delete from cloud
-            await supabase
-              .from("user_progress")
-              .delete()
-              .eq("user_id", userRef.current.id)
-              .eq("poem_id", poemId);
-          }
-        }
-        
-        if (modified) {
-          const newStore = { ...storeRef.current, poems: currentPoems };
-          saveStore(newStore);
-          _setStore(newStore);
-          console.log("Sweep complete.");
-        }
-      } catch (err) {
-        console.error("Error during sweep:", err);
-      }
-    };
-    
-    // Run it once shortly after hydration
-    setTimeout(runSweep, 2000);
-  }, [hydrated, user]);
-
-  
-  const saveCustomPoem = useCallback((poem: any) => {
-    if (typeof window === "undefined") return;
-    try {
-      const customPoemsStr = localStorage.getItem("fengyuqing_custom_poems_v1");
-      let customPoems = [];
-      if (customPoemsStr) {
-        customPoems = JSON.parse(customPoemsStr);
-      }
-      const existingIdx = customPoems.findIndex((p: any) => p.t === poem.t && p.a === poem.a);
-      if (existingIdx !== -1) {
-        customPoems[existingIdx] = poem;
-      } else {
-        customPoems.push(poem);
-      }
-      localStorage.setItem("fengyuqing_custom_poems_v1", JSON.stringify(customPoems));
-      import("./dbSearch").then(db => {
-        db.addCustomPoemsToWorker([poem]);
-      });
-    } catch (e) {
-      console.error("Error saving custom poem", e);
-    }
-  }, []);
-
-  
-  // HARD NUKE REQUESTED BY USER
+// HARD NUKE REQUESTED BY USER
   useEffect(() => {
     if (!hydrated || !userRef.current) return;
     
@@ -403,6 +323,53 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [hydrated, user]);
 
+  
+  const hardNuke = useCallback(async () => {
+    if (!userRef.current) return;
+    const confirm1 = window.confirm("⚠️ 警告：你确定要彻底清空所有的学习进度吗？此操作不可逆！");
+    if (!confirm1) return;
+    
+    try {
+      await supabase
+        .from("user_progress")
+        .delete()
+        .eq("user_id", userRef.current.id);
+      
+      localStorage.removeItem("fengyuqing_v1");
+      const fresh = defaultStore();
+      _setStore(fresh);
+      saveStore(fresh);
+      alert("已成功清空所有学习记录。");
+    } catch (e) {
+      console.error(e);
+      alert("清空失败");
+    }
+  }, []);
+
+  
+  const saveCustomPoem = useCallback((poem: any) => {
+    if (typeof window === "undefined") return;
+    try {
+      const customPoemsStr = localStorage.getItem("fengyuqing_custom_poems_v1");
+      let customPoems = [];
+      if (customPoemsStr) {
+        customPoems = JSON.parse(customPoemsStr);
+      }
+      const existingIdx = customPoems.findIndex((p: any) => p.t === poem.t && p.a === poem.a);
+      if (existingIdx !== -1) {
+        customPoems[existingIdx] = poem;
+      } else {
+        customPoems.push(poem);
+      }
+      localStorage.setItem("fengyuqing_custom_poems_v1", JSON.stringify(customPoems));
+      import("./dbSearch").then(db => {
+        db.addCustomPoemsToWorker([poem]);
+      });
+    } catch (e) {
+      console.error("Error saving custom poem", e);
+    }
+  }, []);
+
   const [overview, setOverview] = useState({ total: 0, level3plus: 0, level5: 0, dueToday: 0, loaded: false });
 
   // Re-compute overview whenever store changes (after hydration)
@@ -428,8 +395,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       deletePoemProgress,
       logout,
       saveCustomPoem,
+      hardNuke,
     }),
-    [store, loaded, overview, user, syncing, setLevel, markPoemAnswered, upsertPoemProgress, getPoemProgress, deletePoemProgress, logout, saveCustomPoem]
+    [store, loaded, overview, user, syncing, setLevel, markPoemAnswered, upsertPoemProgress, getPoemProgress, deletePoemProgress, logout, saveCustomPoem, hardNuke]
   );
 
   return (

@@ -14,7 +14,7 @@ import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
 export default function ProgressPage() {
-  const { store, loaded, upsertPoemProgress, deletePoemProgress } = useUser();
+  const { store, loaded, upsertPoemProgress, deletePoemProgress, hardNuke } = useUser();
   const [rankMap, setRankMap] = useState<Map<string, { t: string; a: string; d: string }>>(new Map());
   const [allLoaded, setAllLoaded] = useState(false);
 
