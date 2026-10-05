@@ -33,6 +33,20 @@ export default function RootLayout({
   return (
     <html lang="zh-Hans">
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.onerror = function(msg, url, lineNo, columnNo, error) {
+                alert("Error: " + msg + "\nURL: " + url + "\nLine: " + lineNo + "\nCol: " + columnNo + "\nError obj: " + (error ? error.message : ''));
+                return false;
+              };
+              window.addEventListener('unhandledrejection', function(event) {
+                alert("Unhandled promise rejection: " + event.reason);
+              });
+            `
+          }}
+        />
+
         <Providers>
           <ShanShuaiBackground />
           <div style={{ position: "relative", zIndex: 1 }}>
