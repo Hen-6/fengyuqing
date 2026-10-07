@@ -53,7 +53,7 @@ export default function PrivacyPage() {
             <h2 className="text-lg font-bold mb-2">5. 联系我们</h2>
             <p>
               如果您对本隐私政策有任何疑问、意见或建议，请联系开发者邮箱：<br />
-              <a href="mailto:henry_lu0529@outlook.com" className="text-accent underline">henry_lu0529@outlook.com</a>
+              <a href="mailto:bixistudio@outlook.com" className="text-accent underline">bixistudio@outlook.com</a>
             </p>
           </section>
         </div>
