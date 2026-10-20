@@ -1,19 +1,182 @@
 /**
- * voice.ts — Web Speech API + annyang.js 语音识别封装
+ * voice.ts — 原生 iOS/Capacitor + Web Speech API 统一语音识别封装
  */
+
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { SpeechRecognition } from "@capgo/capacitor-speech-recognition";
 
 export type VoiceResultCallback = (transcript: string, isFinal: boolean) => void;
 
 interface VoiceEngine {
-  start: (onResult: VoiceResultCallback) => void;
+  start: (onResult: VoiceResultCallback) => Promise<boolean> | void;
   stop: () => void;
   isSupported: () => boolean;
 }
 
-// ─── Web Speech API (Chrome 原生) ───────────────────────────────────────────
+// ─── Native Speech Engine (Capacitor / iOS 原生语音) ─────────────────────────
 
-// Constructor typed without referencing typeof SpeechRecognition (not in
-// TypeScript DOM libs at all TS versions).
+function createNativeSpeechEngine(): VoiceEngine | null {
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return null;
+
+  let partialHandle: PluginListenerHandle | null = null;
+  let stateHandle: PluginListenerHandle | null = null;
+  let errorHandle: PluginListenerHandle | null = null;
+  let isRunning = false;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let latestTranscript = "";
+  let currentCallback: VoiceResultCallback | null = null;
+
+  const clearSilence = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+  };
+
+  const removeListeners = async () => {
+    clearSilence();
+    try {
+      if (partialHandle) {
+        await partialHandle.remove();
+        partialHandle = null;
+      }
+      if (stateHandle) {
+        await stateHandle.remove();
+        stateHandle = null;
+      }
+      if (errorHandle) {
+        await errorHandle.remove();
+        errorHandle = null;
+      }
+    } catch (e) {
+      console.warn("[voice] Error removing native listeners:", e);
+    }
+  };
+
+  const startSession = async () => {
+    if (!isRunning) return;
+    try {
+      latestTranscript = "";
+      clearSilence();
+      await SpeechRecognition.start({
+        language: "zh-CN",
+        maxResults: 5,
+        partialResults: true,
+        popup: false,
+      });
+    } catch (err) {
+      console.warn("[voice] Native session start error:", err);
+    }
+  };
+
+  return {
+    isSupported: () => true,
+    async start(onResult) {
+      currentCallback = onResult;
+      isRunning = true;
+      latestTranscript = "";
+
+      // 检查并请求麦克风及语音识别权限
+      try {
+        const status = await SpeechRecognition.checkPermissions();
+        if (status.speechRecognition !== "granted") {
+          const req = await SpeechRecognition.requestPermissions();
+          if (req.speechRecognition !== "granted") {
+            console.warn("[voice] Native speech permission denied");
+            isRunning = false;
+            return false;
+          }
+        }
+      } catch (err) {
+        console.error("[voice] Native permission request failed:", err);
+        isRunning = false;
+        return false;
+      }
+
+      await removeListeners();
+
+      try {
+        // 1. 实时流式分段结果
+        partialHandle = await SpeechRecognition.addListener("partialResults", (event) => {
+          if (!isRunning) return;
+          const text = (event.accumulatedText || (event.matches && event.matches[0]) || "").replace(/\s/g, "");
+          if (text) {
+            latestTranscript = text;
+            currentCallback?.(text, false);
+
+            // 停顿断句计时器：念完诗句后静音 1.2 秒自动判定为整句结束
+            clearSilence();
+            silenceTimer = setTimeout(async () => {
+              if (isRunning && latestTranscript) {
+                const final = latestTranscript;
+                latestTranscript = "";
+                currentCallback?.(final, true);
+
+                // 若处于持续对答模式，主动重置 session 迎接下一出句
+                if (isListening && isRunning) {
+                  try {
+                    await SpeechRecognition.stop();
+                  } catch (e) {}
+                }
+              }
+            }, 1200);
+          }
+        });
+
+        // 2. 监听原生识别状态流转
+        stateHandle = await SpeechRecognition.addListener("listeningState", async (event) => {
+          if (!isRunning) return;
+          if (event.state === "stopped") {
+            clearSilence();
+            if (latestTranscript) {
+              const final = latestTranscript;
+              latestTranscript = "";
+              currentCallback?.(final, true);
+            }
+
+            // 全自动语音模式下自动循环开启下一轮聆听
+            if (isListening && isRunning) {
+              setTimeout(() => {
+                if (isListening && isRunning) {
+                  startSession();
+                }
+              }, 250);
+            }
+          }
+        });
+
+        // 3. 错误监听
+        errorHandle = await SpeechRecognition.addListener("error", (err) => {
+          console.warn("[voice] Native recognition error event:", err);
+        });
+
+        await startSession();
+        return true;
+      } catch (err) {
+        console.error("[voice] Native recognition start failed:", err);
+        isRunning = false;
+        return false;
+      }
+    },
+    stop() {
+      isRunning = false;
+      clearSilence();
+      if (latestTranscript) {
+        const final = latestTranscript;
+        latestTranscript = "";
+        currentCallback?.(final, true);
+      }
+      currentCallback = null;
+      removeListeners();
+      try {
+        SpeechRecognition.stop();
+      } catch (e) {}
+    },
+  };
+}
+
+// ─── Web Speech API (桌面 Chrome / Edge 原生) ─────────────────────────────────
+
 function createWebSpeechEngine(): VoiceEngine | null {
   if (typeof window === "undefined") return null;
   const SR = (window as unknown as { webkitSpeechRecognition?: { new (): unknown } }).webkitSpeechRecognition ??
@@ -133,6 +296,7 @@ let isListening = false;
 
 export function isVoiceSupported(): boolean {
   if (typeof window === "undefined") return false;
+  if (Capacitor.isNativePlatform()) return true;
   const w = window as unknown as { webkitSpeechRecognition?: unknown; SpeechRecognition?: unknown; annyang?: unknown };
   return !!(w.webkitSpeechRecognition ?? w.SpeechRecognition ?? w.annyang);
 }
@@ -142,7 +306,23 @@ export async function startVoice(
 ): Promise<{ success: boolean; engine: string }> {
   if (isListening) return { success: false, engine: "" };
 
-  // 优先 Web Speech API
+  // 1. 原生平台（iOS / Android）使用原生 Speech Framework
+  if (typeof window !== "undefined" && Capacitor.isNativePlatform()) {
+    const nativeEngine = createNativeSpeechEngine();
+    if (nativeEngine) {
+      activeEngine = nativeEngine;
+      isListening = true;
+      const started = await nativeEngine.start(onResult);
+      if (!started) {
+        activeEngine = null;
+        isListening = false;
+        return { success: false, engine: "" };
+      }
+      return { success: true, engine: "native" };
+    }
+  }
+
+  // 2. 网页端优先 Web Speech API
   const engine = createWebSpeechEngine() ?? createAnnyangEngine();
   if (!engine) {
     // 尝试异步加载 annyang
@@ -164,7 +344,7 @@ export async function startVoice(
 export function stopVoice(): void {
   if (!activeEngine || !isListening) return;
   if (activeEngine !== null) {
-    (activeEngine as { stop?: () => void }).stop?.();
+    activeEngine.stop();
   }
   activeEngine = null;
   isListening = false;

@@ -560,6 +560,8 @@ export function FeihuaGame() {
       });
       if (!success && active) {
         console.warn("[voice] Failed to start continuous voice recognition");
+        setFeedback({ ok: false, msg: "未获得麦克风/语音识别权限或设备不支持" });
+        setVoiceMode(false);
       }
     };
 

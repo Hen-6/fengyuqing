@@ -13,6 +13,7 @@
   "dependencies": {
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
+    "@capgo/capacitor-speech-recognition": "^8.4.4",
     "@jobinjia/shuimo-core": "^1.2.1-beta.1",
     "@supabase/supabase-js": "^2.108.1",
     "localforage": "^1.10.0",

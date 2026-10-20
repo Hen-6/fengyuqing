@@ -25,7 +25,11 @@ export function VoiceInput({ onResult, disabled }: VoiceInputProps) {
         setActive(false);
       }
     });
-    if (success) setActive(true);
+    if (success) {
+      setActive(true);
+    } else {
+      alert("无法启动语音识别，请在系统设置中允许风雨情访问麦克风与语音识别。");
+    }
   }, [active, onResult]);
 
   if (!supported) return null;
