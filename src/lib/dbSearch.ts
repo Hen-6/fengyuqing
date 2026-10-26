@@ -176,3 +176,33 @@ export async function getWorkerPoemCount(): Promise<number> {
         return 9880;
     }
 }
+
+export async function getDailyRecommendation(
+    excludedKeys: string[] = [],
+    offset = 0
+): Promise<{ poem: PoemResult | null; rank: number; total: number }> {
+    try {
+        const res = await runWorker('GET_DAILY', { excludedKeys, offset });
+        if (!res?.poem) return { poem: null, rank: 0, total: 0 };
+        return {
+            poem: {
+                _id: res.poem.id,
+                name: res.poem.t,
+                author: res.poem.a,
+                dynasty: res.poem.d,
+                content: res.poem.content,
+                note: res.poem.note || "",
+                trans: res.poem.trans || "",
+                shangxi: res.poem.shangxi || "",
+                tags: res.poem.tags || [],
+                matchedLine: res.poem.content[0] || "",
+                matchedLineIndex: 0,
+            },
+            rank: res.rank,
+            total: res.total,
+        };
+    } catch (e) {
+        console.error("Failed to get daily recommendation:", e);
+        return { poem: null, rank: 0, total: 0 };
+    }
+}

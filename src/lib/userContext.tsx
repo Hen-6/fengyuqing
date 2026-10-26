@@ -155,6 +155,94 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         saveStore(currentStore);
         _setStore({ ...currentStore });
       }
+
+      // 3. Two-way sync for custom poems (user_custom_poems)
+      try {
+        const { data: cloudCustoms, error: customErr } = await supabase
+          .from("user_custom_poems")
+          .select("poem_id, title, author, dynasty, content, note, trans, shangxi, tags, updated_at");
+
+        if (!customErr) {
+          const localCustomStr = typeof window !== "undefined" ? localStorage.getItem("fengyuqing_custom_poems_v1") : null;
+          let localCustoms: any[] = [];
+          if (localCustomStr) {
+            try { localCustoms = JSON.parse(localCustomStr); } catch (e) {}
+          }
+          if (!Array.isArray(localCustoms)) localCustoms = [];
+
+          const localMap = new Map<string, any>();
+          localCustoms.forEach(p => localMap.set(`${p.t}:${p.a}`, p));
+
+          const cloudMap = new Map<string, any>();
+          cloudCustoms?.forEach(p => cloudMap.set(p.poem_id, p));
+
+          let customModified = false;
+          const toUploadCustoms: any[] = [];
+
+          // Upload local customs not in cloud
+          for (const [key, p] of localMap.entries()) {
+            if (!cloudMap.has(key)) {
+              toUploadCustoms.push({
+                user_id: userId,
+                poem_id: key,
+                title: p.t,
+                author: p.a,
+                dynasty: p.d || "",
+                content: p.content || [],
+                note: p.note || "",
+                trans: p.trans || "",
+                shangxi: p.shangxi || "",
+                tags: p.tags || [],
+                updated_at: new Date().toISOString(),
+              });
+            }
+          }
+
+          // Merge cloud customs not in local
+          const newInjectedToWorker: any[] = [];
+          cloudCustoms?.forEach(cp => {
+            if (!localMap.has(cp.poem_id)) {
+              const formatted = {
+                t: cp.title,
+                a: cp.author,
+                d: cp.dynasty || "",
+                content: cp.content || [],
+                note: cp.note || "",
+                trans: cp.trans || "",
+                shangxi: cp.shangxi || "",
+                tags: cp.tags || []
+              };
+              localCustoms.push(formatted);
+              newInjectedToWorker.push(formatted);
+              customModified = true;
+            }
+          });
+
+          if (customModified && typeof window !== "undefined") {
+            localStorage.setItem("fengyuqing_custom_poems_v1", JSON.stringify(localCustoms));
+            if (newInjectedToWorker.length > 0) {
+              import("./dbSearch").then(db => {
+                db.addCustomPoemsToWorker(newInjectedToWorker).then(() => {
+                  db.getWorkerPoemCount().then(cnt => {
+                    if (cnt > 0) setWorkerTotalCount(cnt);
+                  });
+                });
+              });
+            }
+          }
+
+          if (toUploadCustoms.length > 0) {
+            for (let i = 0; i < toUploadCustoms.length; i += 50) {
+              const chunk = toUploadCustoms.slice(i, i + 50);
+              await supabase
+                .from("user_custom_poems")
+                .upsert(chunk, { onConflict: "user_id,poem_id" });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Custom poems sync skipped or table not initialized yet:", e);
+      }
     } catch (err) {
       console.error("Failed to sync progress with cloud:", err);
     } finally {
@@ -382,6 +470,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           });
         });
       });
+
+      if (userRef.current) {
+        supabase.from("user_custom_poems").upsert({
+          user_id: userRef.current.id,
+          poem_id: `${poem.t}:${poem.a}`,
+          title: poem.t,
+          author: poem.a,
+          dynasty: poem.d || "",
+          content: poem.content || [],
+          note: poem.note || "",
+          trans: poem.trans || "",
+          shangxi: poem.shangxi || "",
+          tags: poem.tags || [],
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,poem_id" }).then(({ error }) => {
+          if (error) console.warn("Failed to upload custom poem to cloud:", error);
+        });
+      }
     } catch (e) {
       console.error("Error saving custom poem", e);
     }

@@ -105,6 +105,34 @@ self.addEventListener('message', async (e) => {
             return;
         }
 
+        if (type === 'GET_DAILY') {
+            const excluded = new Set(e.data.excludedKeys || []);
+            const offset = e.data.offset || 0;
+            let picked = null;
+            let rankIndex = 0;
+            let skippedCount = 0;
+            
+            for (let i = 0; i < poems.length; i++) {
+                const p = poems[i];
+                const key = `${p.t}:${p.a}`;
+                if (!excluded.has(key)) {
+                    if (skippedCount === offset) {
+                        picked = { ...p, id: generatePseudoId(p.t, p.a) };
+                        rankIndex = i + 1;
+                        break;
+                    }
+                    skippedCount++;
+                }
+            }
+            if (!picked && poems.length > 0) {
+                picked = { ...poems[0], id: generatePseudoId(poems[0].t, poems[0].a) };
+                rankIndex = 1;
+            }
+
+            self.postMessage({ id, results: { poem: picked, rank: rankIndex, total: poems.length } });
+            return;
+        }
+
         // GET SINGLE POEM BY KEY (For progress page / details)
         
         if (type === 'ADD_CUSTOM') {
