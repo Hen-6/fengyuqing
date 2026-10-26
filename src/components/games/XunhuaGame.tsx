@@ -44,42 +44,68 @@ function textDistance(a: string, b: string): number {
   return d;
 }
 
-// 动态提取对句：遵循“句末标点+5/7字+逗号+5/7字+句末标点”的严格规则
+// 动态提取对句：支持单行对句、标点断句及偶数对仗子句
 function extractCouplets(poem: { name: string; author: string; content: string[] }): Couplet[] {
   const couplets: Couplet[] = [];
+  const key = `${poem.name}:${poem.author}`;
+
+  function addCouplet(l1Raw: string, l2Raw: string) {
+    const l1 = strip(l1Raw);
+    const l2 = strip(l2Raw);
+    if (l1.length !== l2.length) return;
+    if (l1.length !== 5 && l1.length !== 7) return;
+
+    const text = l1 + l2;
+    if (!couplets.some((c) => c.text === text)) {
+      couplets.push({
+        key,
+        poemTitle: poem.name,
+        poemAuthor: poem.author,
+        text,
+        cc: l1.length,
+        l1,
+        l2,
+      });
+    }
+  }
+
+  // 1. 按行提取：数据库中大量诗词每一行为一联对句（可能以句号或逗号结尾）
+  for (const line of poem.content) {
+    const textNoParens = line.replace(/[（(][^)）]*[)）]/g, "");
+    const parts = textNoParens.split(/[，、]/).filter(Boolean);
+    if (parts.length === 2) {
+      addCouplet(parts[0], parts[1]);
+    } else if (parts.length > 2 && parts.length % 2 === 0) {
+      for (let i = 0; i < parts.length; i += 2) {
+        addCouplet(parts[i], parts[i + 1]);
+      }
+    }
+  }
+
+  // 2. 按句号/分号/问号分段提取
   const fullText = poem.content.join("");
   const textNoParens = fullText.replace(/[（(][^)）]*[)）]/g, "");
   const segments = textNoParens.split(/[。？！；]+/);
 
-  const key = `${poem.name}:${poem.author}`;
-
   for (const seg of segments) {
     const s = seg.trim();
     if (!s) continue;
-    const parts = s.split(/[，、]/);
-    if (parts.length !== 2) continue;
-    const l1_raw = parts[0];
-    const l2_raw = parts[1];
-    const l1 = strip(l1_raw);
-    const l2 = strip(l2_raw);
-    
-    if (l1.length !== l2.length) continue;
-    if (l1.length !== 5 && l1.length !== 7) continue;
-
-    const text = l1 + l2;
-    // 去重
-    if (couplets.some(c => c.text === text)) continue;
-
-    couplets.push({
-      key,
-      poemTitle: poem.name,
-      poemAuthor: poem.author,
-      text,
-      cc: l1.length,
-      l1,
-      l2,
-    });
+    const parts = s.split(/[，、]/).filter(Boolean);
+    if (parts.length === 2) {
+      addCouplet(parts[0], parts[1]);
+    } else if (parts.length > 2 && parts.length % 2 === 0) {
+      for (let i = 0; i < parts.length; i += 2) {
+        addCouplet(parts[i], parts[i + 1]);
+      }
+    }
   }
+
+  // 3. 跨行偶数子句提取（针对单句占单行的排版格式）
+  const clauses = textNoParens.split(/[，、。？！；…\s]+/).filter(Boolean);
+  for (let i = 0; i < clauses.length - 1; i += 2) {
+    addCouplet(clauses[i], clauses[i + 1]);
+  }
+
   return couplets;
 }
 

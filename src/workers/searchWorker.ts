@@ -237,9 +237,11 @@ self.addEventListener('message', async (e) => {
             }
             
             if (mode === 'line') {
+                const cleanQuery = query.replace(/[^\u4e00-\u9fa5]/g, "");
                 for (const p of poems) {
                     for (const line of p.content) {
-                        if (line.includes(query)) {
+                        const cleanLine = line.replace(/[^\u4e00-\u9fa5]/g, "");
+                        if (line.includes(query) || (cleanQuery && cleanLine.includes(cleanQuery))) {
                             exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line, score: 100 });
                             break;
                         }
@@ -321,6 +323,7 @@ self.addEventListener('message', async (e) => {
             }
             
             if (mode === 'general') {
+                const cleanQuery = query.replace(/[^\u4e00-\u9fa5]/g, "");
                 for (const p of poems) {
                     let matched = false;
                     if (p.t === query || p.a === query || p.t.includes(query) || p.a.includes(query)) {
@@ -330,7 +333,8 @@ self.addEventListener('message', async (e) => {
 
                     if (!matched) {
                         for (const line of p.content) {
-                            if (line.includes(query)) {
+                            const cleanLine = line.replace(/[^\u4e00-\u9fa5]/g, "");
+                            if (line.includes(query) || (cleanQuery && cleanLine.includes(cleanQuery))) {
                                 exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line, score: 90 });
                                 matched = true;
                                 break;
