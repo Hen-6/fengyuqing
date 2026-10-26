@@ -55,14 +55,15 @@ async function runWorker(type: string, payload: any): Promise<any> {
 export async function searchOnline(
   query: string,
   maxResults = 20,
-  mode: 'general' | 'line' | 'char' = 'general',
-  matchType: 'exact' | 'scattered' = 'exact'
+  mode: 'general' | 'line' | 'char' | 'tag' = 'general',
+  matchType: 'exact' | 'scattered' = 'exact',
+  tag?: string
 ): Promise<SearchResult[]> {
   const q = query.trim();
-  if (!q) return [];
+  if (!q && !tag) return [];
 
   try {
-    const results = await runWorker('SEARCH', { query: q, mode, limit: maxResults, matchType });
+    const results = await runWorker('SEARCH', { query: q, mode, limit: maxResults, matchType, tag });
     if (!results || results.length === 0) return [];
 
     return results.map((r: any, idx: number) => {
@@ -98,6 +99,22 @@ export async function searchOnline(
 
 export async function generalSearch(query: string, maxResults = 2000): Promise<SearchResult[]> {
   return searchOnline(query, maxResults, 'general');
+}
+
+export async function searchByTag(tag: string, maxResults = 2000, textQuery = ""): Promise<SearchResult[]> {
+  const cleanTag = tag.trim();
+  if (!cleanTag) return [];
+  return searchOnline(textQuery || cleanTag, maxResults, 'tag', 'exact', cleanTag);
+}
+
+export async function getAllTags(): Promise<{ name: string; count: number }[]> {
+  try {
+    const res = await runWorker('GET_TAGS', {});
+    return res || [];
+  } catch (error) {
+    console.error("getAllTags error:", error);
+    return [];
+  }
 }
 
 export async function searchByChar(char: string, maxResults = 20, matchType: 'exact' | 'scattered' = 'exact'): Promise<SearchResult[]> {

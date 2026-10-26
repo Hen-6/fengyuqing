@@ -6,6 +6,8 @@ export {
   ensureLoaded,
   searchOnline,
   generalSearch,
+  searchByTag,
+  getAllTags,
   searchByChar,
   getPoemByKeyExport,
   getAllPoems,

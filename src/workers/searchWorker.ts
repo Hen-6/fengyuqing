@@ -133,6 +133,25 @@ self.addEventListener('message', async (e) => {
             return;
         }
 
+        if (type === 'GET_TAGS') {
+            const tagMap = new Map<string, number>();
+            for (const p of poems) {
+                if (Array.isArray(p.tags)) {
+                    for (const t of p.tags) {
+                        const trimmed = (t || '').trim();
+                        if (trimmed) {
+                            tagMap.set(trimmed, (tagMap.get(trimmed) || 0) + 1);
+                        }
+                    }
+                }
+            }
+            const sorted = Array.from(tagMap.entries())
+                .sort((a, b) => b[1] - a[1])
+                .map(([name, count]) => ({ name, count }));
+            self.postMessage({ id, results: sorted });
+            return;
+        }
+
         // GET SINGLE POEM BY KEY (For progress page / details)
         
         if (type === 'ADD_CUSTOM') {
@@ -185,7 +204,7 @@ self.addEventListener('message', async (e) => {
 
         // SEARCH ROUTE
         if (type === 'SEARCH') {
-            const exactLimit = limit || (mode === 'char' ? 200 : 5);
+            const exactLimit = limit || (mode === 'char' ? 200 : (mode === 'tag' ? 2000 : 5));
             const fuzzyLimit = 5;
             
             let exactMatches: any[] = [];
@@ -265,6 +284,41 @@ self.addEventListener('message', async (e) => {
                 })) });
                 return;
             }
+
+            if (mode === 'tag') {
+                const targetTag = (e.data.tag || query || '').trim().toLowerCase();
+                const textFilter = (e.data.textQuery || (query && e.data.tag && query !== e.data.tag ? query : '')).trim().toLowerCase();
+                for (const p of poems) {
+                    if (Array.isArray(p.tags)) {
+                        const hasTag = p.tags.some((t: string) => {
+                            const lt = (t || '').toLowerCase();
+                            return lt === targetTag || lt.includes(targetTag) || targetTag.includes(lt);
+                        });
+                        if (hasTag) {
+                            if (!textFilter) {
+                                exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: p.content[0], score: 100 });
+                            } else {
+                                const matchTitle = p.t.toLowerCase().includes(textFilter);
+                                const matchAuthor = p.a.toLowerCase().includes(textFilter);
+                                const matchedLine = p.content.find((l: string) => l.toLowerCase().includes(textFilter));
+                                if (matchTitle || matchAuthor || matchedLine) {
+                                    exactMatches.push({
+                                        ...p,
+                                        id: generatePseudoId(p.t, p.a),
+                                        matchedLine: matchedLine || p.content[0],
+                                        score: matchTitle ? 100 : (matchAuthor ? 95 : 90)
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                const finalMatches = exactMatches.slice(0, exactLimit);
+                self.postMessage({ id, results: finalMatches.map(p => ({
+                    id: p.id, title: p.t, author: p.a, dynasty: p.d, lines: p.content, matchedLine: p.matchedLine, score: p.score, note: p.note, trans: p.trans, shangxi: p.shangxi, tags: p.tags
+                })) });
+                return;
+            }
             
             if (mode === 'general') {
                 for (const p of poems) {
@@ -278,6 +332,16 @@ self.addEventListener('message', async (e) => {
                         for (const line of p.content) {
                             if (line.includes(query)) {
                                 exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: line, score: 90 });
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!matched && Array.isArray(p.tags)) {
+                        for (const t of p.tags) {
+                            if (t === query || t.includes(query) || query.includes(t)) {
+                                exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: p.content[0], score: 85 });
                                 matched = true;
                                 break;
                             }
