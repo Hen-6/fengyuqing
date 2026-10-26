@@ -167,3 +167,12 @@ export function addCustomPoemsToWorker(poems: PoemResult[]): Promise<void> {
         worker?.postMessage({ type: 'ADD_CUSTOM', customPoems: poems, id });
     });
 }
+
+export async function getWorkerPoemCount(): Promise<number> {
+    try {
+        const res = await runWorker('COUNT', {});
+        return res?.count ?? 9880;
+    } catch {
+        return 9880;
+    }
+}

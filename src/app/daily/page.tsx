@@ -40,7 +40,7 @@ export default function DailyPage() {
     <div className="min-h-screen paper-texture px-6 pb-8 safe-pt">
       <div className="mx-auto max-w-md space-y-6">
         <header className="flex items-center gap-4">
-          <Link href="/" className="text-2xl text-text-muted hover:text-accent transition">←</Link>
+          <Link href="/" className="flex items-center justify-center w-10 h-10 -ml-2 rounded-full text-2xl text-text-muted hover:text-accent hover:bg-black/5 active:bg-black/10 transition">←</Link>
           <h1 className="text-xl font-bold text-ink">每日推荐</h1>
         </header>
 

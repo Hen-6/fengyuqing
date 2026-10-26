@@ -100,6 +100,11 @@ self.addEventListener('message', async (e) => {
         
         const poems = globalPoemsCache;
 
+        if (type === 'COUNT') {
+            self.postMessage({ id, results: { count: poems.length } });
+            return;
+        }
+
         // GET SINGLE POEM BY KEY (For progress page / details)
         
         if (type === 'ADD_CUSTOM') {

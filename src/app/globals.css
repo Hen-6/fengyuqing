@@ -35,7 +35,7 @@
 /* 毛玻璃内容面板 */
 .glass-panel {
   min-height: 100vh;
-  padding-top: calc(max(env(safe-area-inset-top), 20px) + 1.5rem);
+  padding-top: calc(max(env(safe-area-inset-top), 20px) + 2.5rem);
   /* 背景 */
   background: rgba(245, 240, 232, 0.88);
   backdrop-filter: blur(16px);
@@ -351,5 +351,5 @@ body::before {
 }
 
 /* Safe Area Utilities */
-.safe-pt { padding-top: calc(max(env(safe-area-inset-top), 20px) + 1.5rem); }
+.safe-pt { padding-top: calc(max(env(safe-area-inset-top), 20px) + 2.5rem); }
 .safe-pb { padding-bottom: calc(max(env(safe-area-inset-bottom), 20px) + 1.5rem); }

@@ -376,21 +376,36 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
       localStorage.setItem("fengyuqing_custom_poems_v1", JSON.stringify(customPoems));
       import("./dbSearch").then(db => {
-        db.addCustomPoemsToWorker([poem]);
+        db.addCustomPoemsToWorker([poem]).then(() => {
+          db.getWorkerPoemCount().then(cnt => {
+            if (cnt > 0) setWorkerTotalCount(cnt);
+          });
+        });
       });
     } catch (e) {
       console.error("Error saving custom poem", e);
     }
   }, []);
 
+  const [workerTotalCount, setWorkerTotalCount] = useState<number | undefined>(undefined);
   const [overview, setOverview] = useState({ total: 0, level3plus: 0, level5: 0, dueToday: 0, loaded: false });
 
-  // Re-compute overview whenever store changes (after hydration)
+  // Sync worker exact poem count once loaded
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    import("./dbSearch").then(db => {
+      db.getWorkerPoemCount().then(cnt => {
+        if (cnt > 0) setWorkerTotalCount(cnt);
+      });
+    });
+  }, []);
+
+  // Re-compute overview whenever store or worker count changes (after hydration)
   useEffect(() => {
     if (!hydrated) return;
-    const ov = getOverview(store);
+    const ov = getOverview(store, workerTotalCount);
     setOverview({ ...ov, loaded: true });
-  }, [store, hydrated]);
+  }, [store, hydrated, workerTotalCount]);
 
   const loaded = hydrated;
 

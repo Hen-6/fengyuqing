@@ -231,10 +231,24 @@ export function importProgress(json: string): boolean {
   }
 }
 
+export const BASE_POEMS_COUNT = 9880;
+
+export function getCustomPoemsCount(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = localStorage.getItem("fengyuqing_custom_poems_v1");
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.length;
+    }
+  } catch (e) {}
+  return 0;
+}
+
 /** 统计概览
- * 统一逻辑：从 store.poems 出发，计所有诗词。
+ * 统一逻辑：从 store.poems 出发，统计所有已练习诗词及总库容量。
  */
-export function getOverview(store: UserStore): {
+export function getOverview(store: UserStore, dynamicBaseCount?: number): {
   total: number;
   level3plus: number;
   level5: number;
@@ -253,5 +267,8 @@ export function getOverview(store: UserStore): {
     if (prog.nextReview <= today) dueToday++;
   }
 
-  return { total: 314547, level3plus, level5, dueToday };
+  const base = dynamicBaseCount ?? BASE_POEMS_COUNT;
+  const custom = getCustomPoemsCount();
+
+  return { total: base + custom, level3plus, level5, dueToday };
 }

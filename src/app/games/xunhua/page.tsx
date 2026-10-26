@@ -7,8 +7,8 @@ export default function XunhuaPage() {
   return (
     <div style={{ background: "#fff", minHeight: "100vh" }} className="safe-pt">
       <div style={{ maxWidth: "480px", margin: "0 auto" }}>
-        <header className="flex items-center gap-4 mb-4">
-          <Link href="/" className="text-2xl text-gray-400 hover:text-gray-700 transition">←</Link>
+        <header className="flex items-center gap-3 mb-4">
+          <Link href="/" className="flex items-center justify-center w-10 h-10 -ml-2 rounded-full text-2xl text-gray-400 hover:text-gray-700 hover:bg-black/5 active:bg-black/10 transition">←</Link>
           <h1 className="text-xl font-bold text-gray-800">寻花令</h1>
         </header>
         <p className="text-xs text-gray-500 mb-4">

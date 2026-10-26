@@ -78,14 +78,30 @@ export function LearnGame() {
   }
 
   return (
-    <div style={{ background: "#fff", minHeight: "100vh", padding: "16px", paddingTop: "calc(max(env(safe-area-inset-top), 20px) + 16px)", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ background: "#fff", minHeight: "100vh", padding: "16px", paddingTop: "calc(max(env(safe-area-inset-top), 20px) + 2.5rem)", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "600px", margin: "0 auto 24px" }}>
-        <Link href="/" style={{ color: "#333", textDecoration: "none", fontSize: "14px", fontWeight: "bold" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "600px", margin: "0 auto 28px" }}>
+        <Link
+          href="/"
+          style={{
+            color: "#333",
+            textDecoration: "none",
+            fontSize: "15px",
+            fontWeight: "bold",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "8px 16px",
+            borderRadius: "20px",
+            backgroundColor: "rgba(0, 0, 0, 0.05)",
+            minHeight: "44px",
+            minWidth: "44px",
+          }}
+        >
           ← 返回
         </Link>
-        <span style={{ fontSize: "14px", fontWeight: "bold", color: "#333" }}>学习模式</span>
-        <div style={{ width: "40px" }} /> {/* Spacer for centering */}
+        <span style={{ fontSize: "16px", fontWeight: "bold", color: "#333" }}>学习模式</span>
+        <div style={{ width: "44px" }} /> {/* Spacer for centering */}
       </div>
 
       <div style={{ maxWidth: "600px", margin: "0 auto", textAlign: "center" }}>
