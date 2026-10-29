@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@/lib/userContext";
@@ -8,17 +7,17 @@ import { getRankList } from "@/lib/poems";
 import { PoemProgress, setLevel } from "@/lib/srs";
 import { LEVEL_LABELS } from "@/lib/srs";
 import { OnlinePoemCard } from "@/components/ui/OnlinePoemCard";
-import type { OnlinePoemResult } from "@/lib/localSearch";
 import { getPoemByKeyExport } from "@/lib/dbSearch";
-import { loadAllPoemsLookup, getPoemByKeyFast } from "@/data/allPoemsLookup";
+import { getPoemByKeyFast } from "@/data/allPoemsLookup";
 
 const OBJECTID_RE = /^[0-9a-f]{24}$/i;
 
 export default function ProgressPage() {
-  const { store, loaded, upsertPoemProgress, deletePoemProgress, hardNuke } = useUser();
+  const { store, loaded, upsertPoemProgress, deletePoemProgress, toggleFavorite, hardNuke } = useUser();
   const [rankMap, setRankMap] = useState<Map<string, { t: string; a: string; d: string }>>(new Map());
   const [allLoaded, setAllLoaded] = useState(false);
-  const [workerLookupMap, setWorkerLookupMap] = useState<Record<string, {d: string}>>({});
+  const [workerLookupMap, setWorkerLookupMap] = useState<Record<string, { d: string }>>({});
+  const [onlyFavorite, setOnlyFavorite] = useState(false);
 
   useEffect(() => {
     const list = getRankList();
@@ -30,9 +29,15 @@ export default function ProgressPage() {
     setAllLoaded(true);
   }, []);
 
-  const practiced = store?.poems ? Object.values(store.poems).filter(
-    (p) => !OBJECTID_RE.test(p.poemId) && p.level > 1
-  ) : [];
+  const allPracticed = store?.poems
+    ? Object.values(store.poems).filter((p) => !OBJECTID_RE.test(p.poemId) && p.level > 1)
+    : [];
+
+  const favoriteCount = allPracticed.filter((p) => p.isFavorite).length;
+
+  const practiced = onlyFavorite
+    ? allPracticed.filter((p) => p.isFavorite)
+    : allPracticed;
 
   useEffect(() => {
     if (!allLoaded || practiced.length === 0) return;
@@ -50,18 +55,20 @@ export default function ProgressPage() {
       });
       const results = await Promise.all(promises);
       if (!isActive) return;
-      const newMap: Record<string, {d: string}> = {};
+      const newMap: Record<string, { d: string }> = {};
       let changed = false;
-      results.forEach(r => {
+      results.forEach((r) => {
         if (r) {
           newMap[r.id] = { d: r.d };
           changed = true;
         }
       });
-      if (changed) setWorkerLookupMap(prev => ({...prev, ...newMap}));
+      if (changed) setWorkerLookupMap((prev) => ({ ...prev, ...newMap }));
     };
     fetchMissing();
-    return () => { isActive = false; };
+    return () => {
+      isActive = false;
+    };
   }, [allLoaded, practiced.length, rankMap]);
 
   if (!loaded) return null;
@@ -69,13 +76,16 @@ export default function ProgressPage() {
   type PoemEntry = { key: string; title: string; author: string; dynasty: string; p: PoemProgress };
 
   const byLevel: Record<string, PoemEntry[]> = {
-    "2": [], "3": [], "4": [], "5": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": [],
   };
 
   for (const prog of practiced) {
     const info = rankMap.get(prog.poemId);
     const lookup = allLoaded ? getPoemByKeyFast(prog.poemId) : null;
-    
+
     const parts = prog.poemId.split(":");
     const t = info?.t || lookup?.t || parts[0] || prog.poemId;
     const a = info?.a || lookup?.a || parts.slice(1).join(":") || "";
@@ -100,11 +110,53 @@ export default function ProgressPage() {
     <div className="min-h-screen paper-texture px-6 pb-8 safe-pt">
       <div className="mx-auto max-w-md space-y-6">
         <header className="flex items-center gap-3">
-          <Link href="/" className="flex items-center justify-center w-10 h-10 -ml-2 rounded-full text-2xl text-text-muted hover:text-accent hover:bg-black/5 active:bg-black/10 transition">←</Link>
-          <h1 className="text-xl font-bold text-ink">学习详情</h1>
+          <Link
+            href="/"
+            className="flex items-center justify-center w-10 h-10 -ml-2 rounded-full text-2xl text-text-muted hover:text-accent hover:bg-black/5 active:bg-black/10 transition"
+          >
+            ←
+          </Link>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold text-ink">学习详情</h1>
+            <p className="text-xs text-text-muted">掌握度分级及重点标记概览</p>
+          </div>
         </header>
 
-        
+        {/* Tab Switcher: 全部 vs 仅看重点 */}
+        <div className="flex gap-2 p-1 bg-surface rounded-xl border border-border shadow-2xs">
+          <button
+            onClick={() => setOnlyFavorite(false)}
+            className={`flex-1 py-2 text-xs font-medium rounded-lg transition ${
+              !onlyFavorite
+                ? "bg-ink text-paper shadow-xs font-bold"
+                : "text-text-muted hover:text-ink"
+            }`}
+          >
+            全部已学 ({allPracticed.length})
+          </button>
+          <button
+            onClick={() => setOnlyFavorite(true)}
+            className={`flex-1 py-2 text-xs rounded-lg transition flex items-center justify-center gap-1 ${
+              onlyFavorite
+                ? "bg-amber-500 text-white shadow-xs font-bold"
+                : "text-amber-800/80 hover:text-amber-800 font-medium"
+            }`}
+          >
+            <span>⭐</span>
+            <span>仅看重点 ({favoriteCount})</span>
+          </button>
+        </div>
+
+        {onlyFavorite && practiced.length === 0 && (
+          <div className="text-center py-12 text-text-muted text-sm space-y-2">
+            <span className="text-3xl block">⭐</span>
+            <p>暂无标记为重点的诗词</p>
+            <p className="text-xs opacity-75">
+              点击诗词旁的 ☆ 即可将其标记为重点，方便在此集中巩固。
+            </p>
+          </div>
+        )}
+
         {[2, 3, 4, 5].map((lvl) => {
           const items = byLevel[String(lvl)] ?? [];
           if (items.length === 0) return null;
@@ -112,20 +164,21 @@ export default function ProgressPage() {
           return (
             <section key={lvl}>
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-sm font-bold text-white shadow-2xs">
                   {lvl}
                 </span>
                 <h2 className="font-semibold text-ink">{name}</h2>
                 <span className="text-xs text-text-muted">— {desc}</span>
                 <span className="ml-auto text-xs text-text-muted">{items.length}首</span>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {items.map((item) => (
                   <PoemEntryRow
                     key={item.key}
                     item={item}
                     p={item.p}
                     upsert={upsertPoemProgress}
+                    onToggleFavorite={() => toggleFavorite(item.key)}
                     onDelete={() => deletePoemProgress(item.key)}
                   />
                 ))}
@@ -151,11 +204,13 @@ function PoemEntryRow({
   item,
   p,
   upsert,
+  onToggleFavorite,
   onDelete,
 }: {
   item: { key: string; title: string; author: string; dynasty: string };
   p: PoemProgress;
   upsert: (poemId: string, updater: (prog: PoemProgress) => PoemProgress) => void;
+  onToggleFavorite: () => void;
   onDelete: () => void;
 }) {
   const [showCard, setShowCard] = useState(false);
@@ -163,13 +218,18 @@ function PoemEntryRow({
   const [localLevel, setLocalLevel] = useState(p.level);
 
   // 同步外部变化
-  useEffect(() => { setLocalLevel(p.level); }, [p.level]);
+  useEffect(() => {
+    setLocalLevel(p.level);
+  }, [p.level]);
 
   const handleClick = async () => {
-    if (showCard) { setShowCard(false); return; }
-    
+    if (showCard) {
+      setShowCard(false);
+      return;
+    }
+
     let found = getPoemByKeyFast(item.key);
-    
+
     if (!found) {
       try {
         const res = await getPoemByKeyExport(item.key);
@@ -178,14 +238,14 @@ function PoemEntryRow({
             t: res.poem.name,
             a: res.poem.author,
             d: res.poem.dynasty,
-            content: res.poem.content
+            content: res.poem.content,
           };
         }
       } catch (e) {
         console.error("Failed to fetch poem details from worker", e);
       }
     }
-    
+
     setPoemData(found ?? null);
     setShowCard(true);
   };
@@ -201,36 +261,62 @@ function PoemEntryRow({
 
   return (
     <>
-      <button
-        onClick={handleClick}
-        className="w-full flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2.5 text-left hover:border-accent transition"
-      >
-        <div>
-          <span className="font-medium text-ink">{item.title}</span>
+      <div className="w-full flex items-center justify-between rounded-xl border border-border bg-surface px-3.5 py-2.5 hover:border-accent transition shadow-2xs">
+        <div
+          className="flex items-center gap-2 flex-1 min-w-0 pr-2 cursor-pointer select-none"
+          onClick={handleClick}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            className="text-base p-0.5 hover:scale-125 active:scale-95 transition"
+            title={p.isFavorite ? "取消重点" : "设为重点"}
+          >
+            {p.isFavorite ? "⭐" : "☆"}
+          </button>
+          <span className="font-medium text-ink truncate text-sm">{item.title}</span>
         </div>
-        <div className="text-xs text-text-muted">
-          <span className="opacity-70">[{item.dynasty}]</span> <span className="ml-1">{item.author}</span>
+        <div className="text-xs text-text-muted shrink-0 cursor-pointer" onClick={handleClick}>
+          <span className="opacity-70">[{item.dynasty}]</span>{" "}
+          <span className="ml-1 font-medium">{item.author}</span>
         </div>
-      </button>
+      </div>
 
       {showCard && (
-        <div className="rounded-xl border border-border bg-surface p-4">
-          {/* 熟练度调整 */}
-          <div className="mb-3 flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-text-muted">熟练度：</span>
-            {([1, 2, 3, 4, 5] as const).map((lvl) => (
-              <button
-                key={lvl}
-                onClick={() => handleSetLevel(lvl)}
-                className={`px-2 py-1 rounded text-xs font-medium transition ${
-                  localLevel === lvl
-                    ? "bg-accent text-white"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                }`}
-              >
-                {lvl}级
-              </button>
-            ))}
+        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+          {/* 熟练度与重点调整 */}
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-border/50">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-text-muted">熟练度：</span>
+              {([1, 2, 3, 4, 5] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={() => handleSetLevel(lvl)}
+                  className={`px-2 py-1 rounded text-xs font-medium transition ${
+                    localLevel === lvl
+                      ? "bg-accent text-white shadow-2xs"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  {lvl}级
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={onToggleFavorite}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition flex items-center gap-1 ${
+                p.isFavorite
+                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              <span>{p.isFavorite ? "⭐" : "☆"}</span>
+              <span>{p.isFavorite ? "已设为重点" : "设为重点"}</span>
+            </button>
           </div>
 
           {poemData ? (

@@ -71,7 +71,13 @@ async function loadDataset() {
             const decompressed = new TextDecoder().decode(decompressedArray);
             
             console.log("[Worker] Parsing JSON...");
-            globalPoemsCache = JSON.parse(decompressed).poems;
+            const rawPoems = JSON.parse(decompressed).poems;
+            globalPoemsCache = rawPoems.map((p: any) => {
+                if (Array.isArray(p.tags)) {
+                    p.tags = p.tags.map((t: string) => (t || '').trim()).filter(Boolean);
+                }
+                return p;
+            });
             console.log(`[Worker] Loaded ${globalPoemsCache!.length} poems.`);
         } catch (e) {
             console.error("[Worker] Load error:", e);
@@ -149,6 +155,12 @@ self.addEventListener('message', async (e) => {
                 .sort((a, b) => b[1] - a[1])
                 .map(([name, count]) => ({ name, count }));
             self.postMessage({ id, results: sorted });
+            return;
+        }
+
+        if (type === 'GET_ALL_KEYS') {
+            const keys = poems.map((p: any) => `${p.t}:${p.a}`);
+            self.postMessage({ id, results: keys });
             return;
         }
 
@@ -290,11 +302,15 @@ self.addEventListener('message', async (e) => {
             if (mode === 'tag') {
                 const targetTag = (e.data.tag || query || '').trim().toLowerCase();
                 const textFilter = (e.data.textQuery || (query && e.data.tag && query !== e.data.tag ? query : '')).trim().toLowerCase();
+                if (!targetTag) {
+                    self.postMessage({ id, results: [] });
+                    return;
+                }
                 for (const p of poems) {
                     if (Array.isArray(p.tags)) {
                         const hasTag = p.tags.some((t: string) => {
-                            const lt = (t || '').toLowerCase();
-                            return lt === targetTag || lt.includes(targetTag) || targetTag.includes(lt);
+                            const lt = (t || '').trim().toLowerCase();
+                            return lt && (lt === targetTag || lt.includes(targetTag) || (targetTag.length >= 2 && lt.length >= 2 && targetTag.includes(lt)));
                         });
                         if (hasTag) {
                             if (!textFilter) {
@@ -343,8 +359,9 @@ self.addEventListener('message', async (e) => {
                     }
 
                     if (!matched && Array.isArray(p.tags)) {
-                        for (const t of p.tags) {
-                            if (t === query || t.includes(query) || query.includes(t)) {
+                        for (const rawTag of p.tags) {
+                            const t = (rawTag || '').trim();
+                            if (t && (t === query || t.includes(query) || (t.length >= 2 && query.length >= 2 && query.includes(t)))) {
                                 exactMatches.push({ ...p, id: generatePseudoId(p.t, p.a), matchedLine: p.content[0], score: 85 });
                                 matched = true;
                                 break;

@@ -194,6 +194,16 @@ export async function getWorkerPoemCount(): Promise<number> {
     }
 }
 
+export async function getAllWorkerKeys(): Promise<string[]> {
+    try {
+        const res = await runWorker('GET_ALL_KEYS', {});
+        return res || [];
+    } catch (e) {
+        console.error("Failed to get all keys from worker:", e);
+        return [];
+    }
+}
+
 export async function getDailyRecommendation(
     excludedKeys: string[] = [],
     offset = 0

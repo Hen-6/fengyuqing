@@ -10,7 +10,7 @@ import { useUser } from "@/lib/userContext";
 import { AuthModal } from "@/components/ui/AuthModal";
 
 export default function HomePage() {
-  const { store, user, syncing, logout } = useUser();
+  const { store, user, syncing, logout, overview } = useUser();
   const { uuid, discordId, copyUUID, copied } = useLogin();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
 
@@ -183,6 +183,24 @@ export default function HomePage() {
           <div>
             <h3 className="font-semibold text-ink">每日推荐</h3>
             <p className="text-sm text-text-muted">按知名度每日推进一首新诗</p>
+          </div>
+          <span className="ml-auto text-xl text-text-muted">›</span>
+        </Link>
+
+        {/* 重点复习 */}
+        <Link
+          href="/games/learn?mode=favorite"
+          className="guofeng-card flex items-center gap-4 p-5 hover:border-accent transition-colors bg-amber-50/20 border-amber-500/20"
+        >
+          <span className="text-3xl">⭐</span>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-ink">重点复习</h3>
+              <span className="stamp bg-amber-100/80 text-amber-800 border-amber-300">
+                {overview.favorites > 0 ? `${overview.favorites} 首重点` : "重点库"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-sm text-text-muted">专练标星重点诗词，定向巩固突破</p>
           </div>
           <span className="ml-auto text-xl text-text-muted">›</span>
         </Link>

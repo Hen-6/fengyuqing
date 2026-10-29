@@ -253,11 +253,12 @@ export function getOverview(store: UserStore, dynamicBaseCount?: number): {
   level3plus: number;
   level5: number;
   dueToday: number;
+  favorites: number;
 } {
   const OBJECTID_RE = /^[0-9a-f]{24}$/i;
   const today = new Date().toISOString().split("T")[0];
 
-  let level3plus = 0, level5 = 0, dueToday = 0;
+  let level3plus = 0, level5 = 0, dueToday = 0, favorites = 0;
 
   for (const [key, prog] of Object.entries(store.poems)) {
     if (OBJECTID_RE.test(key)) continue;
@@ -265,10 +266,11 @@ export function getOverview(store: UserStore, dynamicBaseCount?: number): {
     if (prog.level >= 3) level3plus++;
     if (prog.level === 5) level5++;
     if (prog.nextReview <= today) dueToday++;
+    if (prog.isFavorite) favorites++;
   }
 
   const base = dynamicBaseCount ?? BASE_POEMS_COUNT;
   const custom = getCustomPoemsCount();
 
-  return { total: base + custom, level3plus, level5, dueToday };
+  return { total: base + custom, level3plus, level5, dueToday, favorites };
 }

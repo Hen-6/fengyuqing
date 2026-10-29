@@ -36,6 +36,7 @@ interface Overview {
   level3plus: number;
   level5: number;
   dueToday: number;
+  favorites: number;
   loaded: boolean;
 }
 
@@ -47,6 +48,7 @@ interface UserContextValue {
   syncing: boolean;
   setLevel: (poemId: string, level: number) => void;
   markPoemAnswered: (poemId: string) => void;
+  toggleFavorite: (poemId: string) => void;
   upsertPoemProgress: (
     poemId: string,
     updater: (p: PoemProgress) => PoemProgress
@@ -81,11 +83,22 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const syncProgress = useCallback(async (userId: string, currentStore: UserStore) => {
     setSyncing(true);
     try {
-      const { data: dbRecords, error } = await supabase
+      let dbRecords: any[] | null = null;
+      let hasCloudFavCol = true;
+      const res = await supabase
         .from("user_progress")
-        .select("poem_id, level, next_review, updated_at");
+        .select("poem_id, level, next_review, is_favorite, updated_at");
       
-      if (error) throw error;
+      if (res.error) {
+        hasCloudFavCol = false;
+        const fallbackRes = await supabase
+          .from("user_progress")
+          .select("poem_id, level, next_review, updated_at");
+        if (fallbackRes.error) throw fallbackRes.error;
+        dbRecords = fallbackRes.data;
+      } else {
+        dbRecords = res.data;
+      }
 
       const dbMap = new Map<string, any>();
       dbRecords?.forEach((r) => dbMap.set(r.poem_id, r));
@@ -98,30 +111,54 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       for (const [poemId, localProg] of Object.entries(localPoems)) {
         const dbRecord = dbMap.get(poemId);
         if (!dbRecord) {
-          toUpload.push({
+          const rec: any = {
             user_id: userId,
             poem_id: poemId,
             level: localProg.level,
             next_review: localProg.nextReview,
             updated_at: new Date().toISOString(),
-          });
+          };
+          if (hasCloudFavCol) rec.is_favorite = !!localProg.isFavorite;
+          toUpload.push(rec);
         } else {
-          // Conflict resolution: Higher level wins, or if levels are different, upload higher
+          // Sync favorite flag from cloud if cloud is true and local is false
+          if (hasCloudFavCol && dbRecord.is_favorite !== undefined) {
+            if (dbRecord.is_favorite !== !!localProg.isFavorite) {
+              if (dbRecord.is_favorite) {
+                localPoems[poemId] = { ...localProg, isFavorite: true };
+                modified = true;
+              } else if (localProg.isFavorite) {
+                toUpload.push({
+                  user_id: userId,
+                  poem_id: poemId,
+                  level: localProg.level,
+                  next_review: localProg.nextReview,
+                  is_favorite: true,
+                  updated_at: new Date().toISOString(),
+                });
+              }
+            }
+          }
+
+          // Conflict resolution: Higher level wins
           if (dbRecord.level > localProg.level) {
             localPoems[poemId] = {
               ...localProg,
               level: dbRecord.level,
               nextReview: dbRecord.next_review,
+              isFavorite: hasCloudFavCol && dbRecord.is_favorite !== undefined ? dbRecord.is_favorite : localProg.isFavorite,
             };
             modified = true;
           } else if (localProg.level > dbRecord.level) {
-            toUpload.push({
+            const rec: any = {
               user_id: userId,
               poem_id: poemId,
               level: localProg.level,
               next_review: localProg.nextReview,
               updated_at: new Date().toISOString(),
-            });
+            };
+            if (hasCloudFavCol) rec.is_favorite = !!localProg.isFavorite;
+            toUpload.push(rec);
           }
         }
       }
@@ -134,6 +171,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             ...base,
             level: r.level,
             nextReview: r.next_review,
+            isFavorite: !!r.is_favorite,
           };
           modified = true;
         }
@@ -144,9 +182,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         const CHUNK_SIZE = 100;
         for (let i = 0; i < toUpload.length; i += CHUNK_SIZE) {
           const chunk = toUpload.slice(i, i + CHUNK_SIZE);
-          await supabase
+          const { error: uploadErr } = await supabase
             .from("user_progress")
             .upsert(chunk, { onConflict: "user_id,poem_id" });
+          if (uploadErr && hasCloudFavCol) {
+            // Retry without is_favorite
+            const cleaned = chunk.map((c) => {
+              const { is_favorite, ...rest } = c;
+              return rest;
+            });
+            await supabase
+              .from("user_progress")
+              .upsert(cleaned, { onConflict: "user_id,poem_id" });
+          }
         }
       }
 
@@ -310,16 +358,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [syncProgress]);
 
   // Cloud persistence helpers
-  const saveCloud = useCallback(async (poemId: string, level: number, nextReview: string) => {
+  const saveCloud = useCallback(async (poemId: string, level: number, nextReview: string, isFavorite?: boolean) => {
     if (!userRef.current) return;
     try {
-      await supabase.from("user_progress").upsert({
+      const payload: any = {
         user_id: userRef.current.id,
         poem_id: poemId,
         level,
         next_review: nextReview,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,poem_id" });
+      };
+      if (typeof isFavorite === "boolean") {
+        payload.is_favorite = isFavorite;
+      }
+      const { error } = await supabase.from("user_progress").upsert(payload, { onConflict: "user_id,poem_id" });
+      if (error && error.message.includes("is_favorite")) {
+        delete payload.is_favorite;
+        await supabase.from("user_progress").upsert(payload, { onConflict: "user_id,poem_id" });
+      }
     } catch (err) {
       console.error("Cloud save failed:", err);
     }
@@ -345,7 +401,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     // Persist to cloud
     const updated = storeRef.current.poems[poemId];
     if (updated) {
-      saveCloud(poemId, updated.level, updated.nextReview);
+      saveCloud(poemId, updated.level, updated.nextReview, updated.isFavorite);
     }
   }, [saveCloud]);
 
@@ -355,7 +411,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     
     const updated = storeRef.current.poems[poemId];
     if (updated) {
-      saveCloud(poemId, updated.level, updated.nextReview);
+      saveCloud(poemId, updated.level, updated.nextReview, updated.isFavorite);
     }
   }, [saveCloud]);
 
@@ -366,11 +422,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       
       const updated = storeRef.current.poems[poemId];
       if (updated) {
-        saveCloud(poemId, updated.level, updated.nextReview);
+        saveCloud(poemId, updated.level, updated.nextReview, updated.isFavorite);
       }
     },
     [saveCloud]
   );
+
+  const toggleFavorite = useCallback((poemId: string) => {
+    const key = poemId.trim();
+    upsertPoemProgress(key, (p) => ({
+      ...p,
+      isFavorite: !p.isFavorite,
+    }));
+  }, [upsertPoemProgress]);
 
   const getPoemProgress = useCallback(
     (poemId: string) => _getPoemProgress(storeRef.current, poemId),
@@ -494,11 +558,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [workerTotalCount, setWorkerTotalCount] = useState<number | undefined>(undefined);
-  const [overview, setOverview] = useState({ total: 0, level3plus: 0, level5: 0, dueToday: 0, loaded: false });
+  const [overview, setOverview] = useState({ total: 0, level3plus: 0, level5: 0, dueToday: 0, favorites: 0, loaded: false });
 
   // Sync worker exact poem count once loaded
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window !== "undefined") return;
     import("./dbSearch").then(db => {
       db.getWorkerPoemCount().then(cnt => {
         if (cnt > 0) setWorkerTotalCount(cnt);
@@ -524,6 +588,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       syncing,
       setLevel,
       markPoemAnswered,
+      toggleFavorite,
       upsertPoemProgress,
       getPoemProgress,
       deletePoemProgress,
@@ -531,7 +596,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       saveCustomPoem,
       hardNuke,
     }),
-    [store, loaded, overview, user, syncing, setLevel, markPoemAnswered, upsertPoemProgress, getPoemProgress, deletePoemProgress, logout, saveCustomPoem, hardNuke]
+    [store, loaded, overview, user, syncing, setLevel, markPoemAnswered, toggleFavorite, upsertPoemProgress, getPoemProgress, deletePoemProgress, logout, saveCustomPoem, hardNuke]
   );
 
   return (

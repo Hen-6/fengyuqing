@@ -21,6 +21,7 @@ export interface PoemProgress {
   consecutiveWrong: number;
   lastResult: ResultType | null;
   lastReviewed: string;      // ISO 日期
+  isFavorite?: boolean;      // ⭐ 重点标记
 }
 
 export const INITIAL_HALF_LIFE = 1; // 天
@@ -88,6 +89,16 @@ export function upgradeToLevel(progress: PoemProgress, minLevel: number): PoemPr
 /** 直接设置到指定等级（可升可降） */
 export function setLevel(progress: PoemProgress, level: number): PoemProgress {
   return { ...progress, level: Math.max(1, Math.min(5, level)) };
+}
+
+/** 切换重点标记 */
+export function toggleFavorite(progress: PoemProgress): PoemProgress {
+  return { ...progress, isFavorite: !progress.isFavorite };
+}
+
+/** 设置重点标记 */
+export function setFavorite(progress: PoemProgress, isFavorite: boolean): PoemProgress {
+  return { ...progress, isFavorite };
 }
 
 /** 获取今天应该复习的诗 */

@@ -8,6 +8,7 @@ export {
   generalSearch,
   searchByTag,
   getAllTags,
+  getAllWorkerKeys,
   searchByChar,
   getPoemByKeyExport,
   getAllPoems,

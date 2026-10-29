@@ -30,12 +30,13 @@ const POPULAR_TAG_NAMES = [
 ];
 
 export default function SearchPage() {
-  const { store, loaded, upsertPoemProgress, deletePoemProgress } = useUser();
+  const { store, loaded, upsertPoemProgress, deletePoemProgress, toggleFavorite } = useUser();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [allLoaded, setAllLoaded] = useState(false);
+  const [onlyFavorite, setOnlyFavorite] = useState(false);
 
   // Tag filter state
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -230,14 +231,28 @@ export default function SearchPage() {
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 -mx-1 px-1">
             <button
-              onClick={() => setSelectedTag(null)}
+              onClick={() => {
+                setSelectedTag(null);
+                setOnlyFavorite(false);
+              }}
               className={`shrink-0 text-xs px-3 py-1.5 rounded-full transition font-medium ${
-                selectedTag === null
+                selectedTag === null && !onlyFavorite
                   ? "bg-ink text-paper shadow-xs"
                   : "bg-surface border border-border text-text-muted hover:text-ink hover:border-ink/30"
               }`}
             >
               全部
+            </button>
+            <button
+              onClick={() => setOnlyFavorite(!onlyFavorite)}
+              className={`shrink-0 text-xs px-3 py-1.5 rounded-full transition font-medium flex items-center gap-1 ${
+                onlyFavorite
+                  ? "bg-amber-500 text-white shadow-xs font-bold"
+                  : "bg-surface border border-amber-200 text-amber-800 hover:border-amber-400"
+              }`}
+            >
+              <span>⭐</span>
+              <span>仅看重点</span>
             </button>
             {POPULAR_TAG_NAMES.map((tagName) => {
               const isActive = selectedTag === tagName;
@@ -259,17 +274,20 @@ export default function SearchPage() {
         </div>
 
         {/* No Results Message */}
-        {(debouncedQuery.trim() || selectedTag) && !searching && results.length === 0 && (
+        {(debouncedQuery.trim() || selectedTag || onlyFavorite) && !searching && results.length === 0 && (
           <div className="text-center text-text-muted py-10 text-sm space-y-2">
             <p>
-              未找到包含{debouncedQuery.trim() ? `「${debouncedQuery}」` : ""}{selectedTag ? ` 标签「${selectedTag}」` : ""}的诗词
+              未找到包含{debouncedQuery.trim() ? `「${debouncedQuery}」` : ""}{selectedTag ? ` 标签「${selectedTag}」` : ""}{onlyFavorite ? " 重点" : ""}的诗词
             </p>
-            {selectedTag && (
+            {(selectedTag || onlyFavorite) && (
               <button
-                onClick={() => setSelectedTag(null)}
+                onClick={() => {
+                  setSelectedTag(null);
+                  setOnlyFavorite(false);
+                }}
                 className="text-xs text-accent underline mt-2"
               >
-                清除标签筛选重试
+                清除筛选重试
               </button>
             )}
           </div>
@@ -277,7 +295,14 @@ export default function SearchPage() {
 
         {/* Results List */}
         <div className="space-y-3.5">
-          {results.slice(0, visibleCount).map((res) => {
+          {results
+            .filter((res) => {
+              if (!onlyFavorite) return true;
+              const pid = `${res.poem.name.trim()}:${res.poem.author.trim()}`;
+              return Boolean(store.poems[pid]?.isFavorite);
+            })
+            .slice(0, visibleCount)
+            .map((res) => {
             const pid = `${res.poem.name.trim()}:${res.poem.author.trim()}`;
             const lookup = allLoaded ? getPoemByKeyFast(pid) : null;
             const dynasty = lookup?.d || res.poem.dynasty || "未知";
@@ -287,6 +312,8 @@ export default function SearchPage() {
                 result={res}
                 dynasty={dynasty}
                 currentLevel={store.poems[pid]?.level ?? 1}
+                isFavorite={Boolean(store.poems[pid]?.isFavorite)}
+                onToggleFavorite={() => toggleFavorite(pid)}
                 autoExpand={results.length === 1}
                 selectedTag={selectedTag}
                 onSelectTag={handleTagClick}
@@ -483,6 +510,8 @@ function SearchResultCard({
   result,
   dynasty,
   currentLevel,
+  isFavorite,
+  onToggleFavorite,
   onSetLevel,
   autoExpand,
   selectedTag,
@@ -491,6 +520,8 @@ function SearchResultCard({
   result: SearchResult;
   dynasty: string;
   currentLevel: number;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
   onSetLevel: (level: number) => void;
   autoExpand?: boolean;
   selectedTag?: string | null;
@@ -544,35 +575,67 @@ function SearchResultCard({
           )}
         </div>
         
-        {/* Current Level Badge */}
-        <div className="shrink-0 flex flex-col items-end">
-          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${currentLevel > 1 ? 'bg-accent text-white shadow-xs' : 'bg-gray-200 text-gray-500'}`}>
-            {currentLevel}
-          </span>
-          <span className="text-[10px] text-text-muted mt-1">{currentLevel > 1 ? '已学' : '未学'}</span>
+        {/* Right action area: Favorite Star & Current Level Badge */}
+        <div className="shrink-0 flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite?.();
+            }}
+            className="text-lg p-1 hover:scale-125 active:scale-90 transition text-amber-500"
+            title={isFavorite ? "取消重点" : "设为重点"}
+          >
+            {isFavorite ? "⭐" : "☆"}
+          </button>
+          
+          <div className="flex flex-col items-end">
+            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${currentLevel > 1 ? 'bg-accent text-white shadow-xs' : 'bg-gray-200 text-gray-500'}`}>
+              {currentLevel}
+            </span>
+            <span className="text-[10px] text-text-muted mt-0.5">{currentLevel > 1 ? '已学' : '未学'}</span>
+          </div>
         </div>
       </div>
 
       {expanded && (
         <div className="px-4 pb-4 border-t border-border/50 pt-3">
-          <div className="mb-4 flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-text-muted">调整熟练度：</span>
-            {([1, 2, 3, 4, 5] as const).map((lvl) => (
-              <button
-                key={lvl}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSetLevel(lvl);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                  currentLevel === lvl
-                    ? "bg-accent text-white shadow-xs"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                {lvl}级
-              </button>
-            ))}
+          <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-text-muted">调整熟练度：</span>
+              {([1, 2, 3, 4, 5] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetLevel(lvl);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                    currentLevel === lvl
+                      ? "bg-accent text-white shadow-xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {lvl}级
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite?.();
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition flex items-center gap-1 ${
+                isFavorite
+                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              <span>{isFavorite ? "⭐" : "☆"}</span>
+              <span>{isFavorite ? "已设为重点" : "设为重点"}</span>
+            </button>
           </div>
           
           <div className="bg-paper/50 rounded-xl p-3.5 text-sm text-ink/90 space-y-1.5 leading-relaxed font-serif">
