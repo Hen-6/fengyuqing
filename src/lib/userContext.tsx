@@ -28,7 +28,7 @@ import {
   getPoemProgress as _getPoemProgress,
   deletePoemProgress as _deletePoemProgress,
 } from "@/lib/user";
-import { PoemProgress, createInitialProgress } from "@/lib/srs";
+import { PoemProgress, createInitialProgress, upgradeToLevel } from "@/lib/srs";
 import { supabase } from "@/lib/supabaseClient";
 
 interface Overview {
@@ -107,7 +107,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const toUpload: any[] = [];
       let modified = false;
 
-      // 1. Merge local changes to DB
+      // 1. Merge local changes with DB records
       for (const [poemId, localProg] of Object.entries(localPoems)) {
         const dbRecord = dbMap.get(poemId);
         if (!dbRecord) {
@@ -116,17 +116,48 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             poem_id: poemId,
             level: localProg.level,
             next_review: localProg.nextReview,
-            updated_at: new Date().toISOString(),
+            updated_at: localProg.updatedAt || new Date().toISOString(),
           };
           if (hasCloudFavCol) rec.is_favorite = !!localProg.isFavorite;
           toUpload.push(rec);
         } else {
-          // Sync favorite flag from cloud if cloud is true and local is false
-          if (hasCloudFavCol && dbRecord.is_favorite !== undefined) {
-            if (dbRecord.is_favorite !== !!localProg.isFavorite) {
+          const dbTime = new Date(dbRecord.updated_at).getTime() || 0;
+          const localTime = new Date(localProg.updatedAt || localProg.lastReviewed || 0).getTime() || 0;
+
+          if (dbTime > localTime) {
+            // Cloud is newer -> Local adopts Cloud state
+            localPoems[poemId] = {
+              ...localProg,
+              level: dbRecord.level,
+              nextReview: dbRecord.next_review,
+              isFavorite: hasCloudFavCol && dbRecord.is_favorite !== undefined ? !!dbRecord.is_favorite : localProg.isFavorite,
+              updatedAt: dbRecord.updated_at,
+            };
+            modified = true;
+          } else if (localTime > dbTime) {
+            // Local is newer -> Push local state to Cloud
+            const rec: any = {
+              user_id: userId,
+              poem_id: poemId,
+              level: localProg.level,
+              next_review: localProg.nextReview,
+              updated_at: localProg.updatedAt || new Date().toISOString(),
+            };
+            if (hasCloudFavCol) rec.is_favorite = !!localProg.isFavorite;
+            toUpload.push(rec);
+          } else {
+            // Timestamps equal or neither has explicit updatedAt: resolve field-by-field safely
+            let itemChanged = false;
+            const merged = { ...localProg };
+            if (dbRecord.level > localProg.level) {
+              merged.level = dbRecord.level;
+              merged.nextReview = dbRecord.next_review;
+              itemChanged = true;
+            }
+            if (hasCloudFavCol && dbRecord.is_favorite !== undefined && dbRecord.is_favorite !== !!localProg.isFavorite) {
               if (dbRecord.is_favorite) {
-                localPoems[poemId] = { ...localProg, isFavorite: true };
-                modified = true;
+                merged.isFavorite = true;
+                itemChanged = true;
               } else if (localProg.isFavorite) {
                 toUpload.push({
                   user_id: userId,
@@ -138,27 +169,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 });
               }
             }
-          }
-
-          // Conflict resolution: Higher level wins
-          if (dbRecord.level > localProg.level) {
-            localPoems[poemId] = {
-              ...localProg,
-              level: dbRecord.level,
-              nextReview: dbRecord.next_review,
-              isFavorite: hasCloudFavCol && dbRecord.is_favorite !== undefined ? dbRecord.is_favorite : localProg.isFavorite,
-            };
-            modified = true;
-          } else if (localProg.level > dbRecord.level) {
-            const rec: any = {
-              user_id: userId,
-              poem_id: poemId,
-              level: localProg.level,
-              next_review: localProg.nextReview,
-              updated_at: new Date().toISOString(),
-            };
-            if (hasCloudFavCol) rec.is_favorite = !!localProg.isFavorite;
-            toUpload.push(rec);
+            if (itemChanged) {
+              localPoems[poemId] = merged;
+              modified = true;
+            }
           }
         }
       }
@@ -171,7 +185,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             ...base,
             level: r.level,
             nextReview: r.next_review,
-            isFavorite: !!r.is_favorite,
+            isFavorite: hasCloudFavCol && r.is_favorite !== undefined ? !!r.is_favorite : false,
+            updatedAt: r.updated_at,
           };
           modified = true;
         }
@@ -358,7 +373,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [syncProgress]);
 
   // Cloud persistence helpers
-  const saveCloud = useCallback(async (poemId: string, level: number, nextReview: string, isFavorite?: boolean) => {
+  const saveCloud = useCallback(async (
+    poemId: string,
+    level: number,
+    nextReview: string,
+    isFavorite?: boolean,
+    updatedAt?: string
+  ) => {
     if (!userRef.current) return;
     try {
       const payload: any = {
@@ -366,13 +387,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         poem_id: poemId,
         level,
         next_review: nextReview,
-        updated_at: new Date().toISOString(),
+        updated_at: updatedAt || new Date().toISOString(),
       };
       if (typeof isFavorite === "boolean") {
         payload.is_favorite = isFavorite;
       }
       const { error } = await supabase.from("user_progress").upsert(payload, { onConflict: "user_id,poem_id" });
-      if (error && error.message.includes("is_favorite")) {
+      if (error && (error.message.includes("is_favorite") || error.code === "42703")) {
         delete payload.is_favorite;
         await supabase.from("user_progress").upsert(payload, { onConflict: "user_id,poem_id" });
       }
@@ -395,34 +416,37 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setLevel = useCallback((poemId: string, level: number) => {
-    _setLevel(storeRef.current, poemId, level);
+    const { key, progress: updated } = _upsertPoemProgress(storeRef.current, poemId, (p) => ({
+      ...p,
+      level: Math.max(1, Math.min(5, level)),
+      consecutiveCorrect: 0,
+      consecutiveWrong: 0,
+      updatedAt: new Date().toISOString(),
+    }));
     _setStore((prev) => ({ ...prev }));
     
     // Persist to cloud
-    const updated = storeRef.current.poems[poemId];
     if (updated) {
-      saveCloud(poemId, updated.level, updated.nextReview, updated.isFavorite);
+      saveCloud(key, updated.level, updated.nextReview, updated.isFavorite, updated.updatedAt);
     }
   }, [saveCloud]);
 
   const markPoemAnswered = useCallback((poemId: string) => {
-    _markPoemAnswered(storeRef.current, poemId);
+    const { key, progress: updated } = _upsertPoemProgress(storeRef.current, poemId, (p) => upgradeToLevel(p, 3));
     _setStore((prev) => ({ ...prev }));
     
-    const updated = storeRef.current.poems[poemId];
     if (updated) {
-      saveCloud(poemId, updated.level, updated.nextReview, updated.isFavorite);
+      saveCloud(key, updated.level, updated.nextReview, updated.isFavorite, updated.updatedAt);
     }
   }, [saveCloud]);
 
   const upsertPoemProgress = useCallback(
     (poemId: string, updater: (p: PoemProgress) => PoemProgress) => {
-      _upsertPoemProgress(storeRef.current, poemId, updater);
+      const { key, progress: updated } = _upsertPoemProgress(storeRef.current, poemId, updater);
       _setStore((prev) => ({ ...prev }));
       
-      const updated = storeRef.current.poems[poemId];
       if (updated) {
-        saveCloud(poemId, updated.level, updated.nextReview, updated.isFavorite);
+        saveCloud(key, updated.level, updated.nextReview, updated.isFavorite, updated.updatedAt);
       }
     },
     [saveCloud]
@@ -433,6 +457,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     upsertPoemProgress(key, (p) => ({
       ...p,
       isFavorite: !p.isFavorite,
+      updatedAt: new Date().toISOString(),
     }));
   }, [upsertPoemProgress]);
 
@@ -456,37 +481,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     _setStore(fresh);
     saveStore(fresh);
   }, []);
-
-  
-// HARD NUKE REQUESTED BY USER
-  useEffect(() => {
-    if (!hydrated || !userRef.current) return;
-    
-    const hasHardNuked = localStorage.getItem("fengyuqing_hard_nuked_v5");
-    if (!hasHardNuked) {
-      console.log("EXECUTING HARD NUKE OF ALL PROGRESS...");
-      
-      // 1. Nuke Cloud
-      supabase
-        .from("user_progress")
-        .delete()
-        .eq("user_id", userRef.current.id)
-        .then(() => {
-           console.log("Cloud nuked.");
-        });
-        
-      // 2. Nuke Local
-      localStorage.removeItem("fengyuqing_v1");
-      
-      // 3. Reset in-memory store
-      const fresh = defaultStore();
-      _setStore(fresh);
-      saveStore(fresh);
-      
-      localStorage.setItem("fengyuqing_hard_nuked_v5", "true");
-      alert("已经为你强制格式化了所有乱七八糟的历史学习进度！现在是一个100%纯净的开始。");
-    }
-  }, [hydrated, user]);
 
   
   const hardNuke = useCallback(async () => {

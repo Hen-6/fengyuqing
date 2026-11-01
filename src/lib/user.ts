@@ -152,13 +152,17 @@ export function upsertPoemProgress(
   store: UserStore,
   poemId: string,
   updater: (p: PoemProgress) => PoemProgress
-): void {
+): { key: string; progress: PoemProgress } {
   // Always normalize the key to avoid " 静夜思:李白" vs "静夜思:李白" mismatches
   const existingKey = findPoemKey(store, poemId.trim());
   const current = store.poems[existingKey] ?? createInitialProgress(existingKey);
   const next = updater({ ...current, poemId: existingKey });
+  if (!next.updatedAt) {
+    next.updatedAt = new Date().toISOString();
+  }
   store.poems[existingKey] = next;
   saveStore(store);
+  return { key: existingKey, progress: next };
 }
 
 /** 游戏回答正确 → 升级到 level 3 */
@@ -182,6 +186,7 @@ export function setLevel(store: UserStore, poemId: string, level: number): void 
     level: Math.max(1, Math.min(5, level)),
     consecutiveCorrect: 0,
     consecutiveWrong: 0,
+    updatedAt: new Date().toISOString(),
   }));
 }
 

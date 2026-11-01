@@ -22,6 +22,7 @@ export interface PoemProgress {
   lastResult: ResultType | null;
   lastReviewed: string;      // ISO 日期
   isFavorite?: boolean;      // ⭐ 重点标记
+  updatedAt?: string;        // ISO 8601 完整时间戳，用于多端同步合并
 }
 
 export const INITIAL_HALF_LIFE = 1; // 天
@@ -34,16 +35,18 @@ function addDays(date: Date, days: number): Date {
 }
 
 export function createInitialProgress(poemId: string): PoemProgress {
-  const now = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const dateStr = now.toISOString().split("T")[0];
   return {
     poemId,
     level: 1,
     halfLifeDays: INITIAL_HALF_LIFE,
-    nextReview: now,
+    nextReview: dateStr,
     consecutiveCorrect: 0,
     consecutiveWrong: 0,
     lastResult: null,
-    lastReviewed: now,
+    lastReviewed: dateStr,
+    updatedAt: now.toISOString(),
   };
 }
 
@@ -77,28 +80,29 @@ export function updateProgress(
   next.nextReview = addDays(now, next.halfLifeDays).toISOString().split("T")[0];
   next.lastResult = result;
   next.lastReviewed = now.toISOString().split("T")[0];
+  next.updatedAt = now.toISOString();
 
   return next;
 }
 
 /** 提升到指定等级（用于游戏回答后自动升级） */
 export function upgradeToLevel(progress: PoemProgress, minLevel: number): PoemProgress {
-  return { ...progress, level: Math.max(progress.level, minLevel) };
+  return { ...progress, level: Math.max(progress.level, minLevel), updatedAt: new Date().toISOString() };
 }
 
 /** 直接设置到指定等级（可升可降） */
 export function setLevel(progress: PoemProgress, level: number): PoemProgress {
-  return { ...progress, level: Math.max(1, Math.min(5, level)) };
+  return { ...progress, level: Math.max(1, Math.min(5, level)), updatedAt: new Date().toISOString() };
 }
 
 /** 切换重点标记 */
 export function toggleFavorite(progress: PoemProgress): PoemProgress {
-  return { ...progress, isFavorite: !progress.isFavorite };
+  return { ...progress, isFavorite: !progress.isFavorite, updatedAt: new Date().toISOString() };
 }
 
 /** 设置重点标记 */
 export function setFavorite(progress: PoemProgress, isFavorite: boolean): PoemProgress {
-  return { ...progress, isFavorite };
+  return { ...progress, isFavorite, updatedAt: new Date().toISOString() };
 }
 
 /** 获取今天应该复习的诗 */
